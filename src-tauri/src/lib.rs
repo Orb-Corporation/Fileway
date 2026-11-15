@@ -527,7 +527,7 @@ async fn handle_connection(
             let (sender, receiver) = oneshot::channel();
             state.pair_requests.lock().await.insert(request_id.clone(), view.clone());
             state.pair_waiters.lock().await.insert(request_id.clone(), sender);
-            let _ = state.app.emit("pair-request", view);
+            let _ = state.app.emit("pair-request", view.clone());
             let decision = match timeout(Duration::from_secs(300), receiver).await {
                 Ok(Ok(decision)) => decision,
                 _ => {
@@ -664,7 +664,7 @@ fn get_device_info(state: State<'_, Arc<AppState>>) -> DeviceInfo {
 }
 
 #[tauri::command]
-async fn get_discovered_devices(state: State<'_, Arc<AppState>>) -> Vec<DiscoveredDevice> {
+async fn get_discovered_devices(state: State<'_, Arc<AppState>>) -> Result<Vec<DiscoveredDevice>, String> {
     let now = unix_seconds();
     let paired = state.paired.lock().await;
     let mut devices = state.devices.lock().await;
@@ -674,22 +674,22 @@ async fn get_discovered_devices(state: State<'_, Arc<AppState>>) -> Vec<Discover
         item
     }).collect::<Vec<_>>();
     result.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    result
+    Ok(result)
 }
 
 #[tauri::command]
-async fn get_pair_requests(state: State<'_, Arc<AppState>>) -> Vec<PairRequestView> {
-    state.pair_requests.lock().await.values().cloned().collect()
+async fn get_pair_requests(state: State<'_, Arc<AppState>>) -> Result<Vec<PairRequestView>, String> {
+    Ok(state.pair_requests.lock().await.values().cloned().collect())
 }
 
 #[tauri::command]
-async fn get_transfer_requests(state: State<'_, Arc<AppState>>) -> Vec<TransferRequestView> {
-    state.transfer_requests.lock().await.values().cloned().collect()
+async fn get_transfer_requests(state: State<'_, Arc<AppState>>) -> Result<Vec<TransferRequestView>, String> {
+    Ok(state.transfer_requests.lock().await.values().cloned().collect())
 }
 
 #[tauri::command]
-async fn get_paired_devices(state: State<'_, Arc<AppState>>) -> Vec<PairedDeviceView> {
-    state.paired_views().await
+async fn get_paired_devices(state: State<'_, Arc<AppState>>) -> Result<Vec<PairedDeviceView>, String> {
+    Ok(state.paired_views().await)
 }
 
 #[tauri::command]
