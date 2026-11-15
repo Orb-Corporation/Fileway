@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -218,13 +218,19 @@ impl AppState {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum IncomingMessage {
     PairRequest {
+        #[serde(rename = "requestId")]
         request_id: String,
+        #[serde(rename = "deviceId")]
         device_id: String,
+        #[serde(rename = "deviceName")]
         device_name: String,
     },
     TransferRequest {
+        #[serde(rename = "transferId")]
         transfer_id: String,
+        #[serde(rename = "deviceId")]
         device_id: String,
+        #[serde(rename = "deviceName")]
         device_name: String,
         token: String,
         files: Vec<FileInfo>,
@@ -265,6 +271,7 @@ struct TransferCompleteMessage {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TransferAck {
     kind: String,
     file_index: Option<usize>,
@@ -321,10 +328,7 @@ async fn write_json_line<T: Serialize>(
 
 async fn read_json_line(reader: &mut BufReader<TcpStream>) -> Result<String, String> {
     let mut line = String::new();
-    let count = timeout(Duration::from_secs(30), reader.read_line(&mut line))
-        .await
-        .map_err(|_| "Karşı cihaz yanıt vermedi.".to_string())?
-        .map_err(|error| error.to_string())?;
+    let count = reader.read_line(&mut line).await.map_err(|error| error.to_string())?;
     if count == 0 { return Err("Bağlantı karşı cihaz tarafından kapatıldı.".to_string()); }
     if line.len() > MAX_HEADER_BYTES { return Err("Ağ mesajı izin verilen boyutu aşıyor.".to_string()); }
     Ok(line)
@@ -443,7 +447,8 @@ async fn handle_connection(
     state: Arc<AppState>,
 ) -> Result<(), String> {
     let mut reader = BufReader::new(stream);
-    let line = read_json_line(&mut reader).await?;
+    let line = timeout(Duration::from_secs(30), read_json_line(&mut reader))
+        .await.map_err(|_| "İlk ağ mesajı zaman aşımına uğradı.".to_string())??;
     let message: IncomingMessage = serde_json::from_str(&line).map_err(|_| "Geçersiz Fileway mesajı.".to_string())?;
 
     match message {
@@ -471,10 +476,14 @@ async fn handle_connection(
             state.pair_requests.lock().await.insert(request_id.clone(), view.clone());
             state.pair_waiters.lock().await.insert(request_id.clone(), sender);
             let _ = state.app.emit("pair-request", view);
-            let decision = timeout(Duration::from_secs(300), receiver)
-                .await
-                .map_err(|_| "Eşleşme isteğinin süresi doldu.".to_string())?
-                .map_err(|_| "Eşleşme isteği iptal edildi.".to_string())?;
+            let decision = match timeout(Duration::from_secs(300), receiver).await {
+                Ok(Ok(decision)) => decision,
+                _ => {
+                    state.pair_requests.lock().await.remove(&request_id);
+                    state.pair_waiters.lock().await.remove(&request_id);
+                    return Err("Eşleşme isteğinin süresi doldu veya iptal edildi.".to_string());
+                }
+            };
 
             write_json_line(reader.get_mut(), &PairResponse {
                 kind: "pair_response".to_string(),
@@ -536,10 +545,14 @@ async fn handle_connection(
             state.transfer_waiters.lock().await.insert(transfer_id.clone(), sender);
             let _ = state.app.emit("transfer-request", view.clone());
 
-            let decision = timeout(Duration::from_secs(600), receiver)
-                .await
-                .map_err(|_| "Dosya aktarımı isteğinin süresi doldu.".to_string())?
-                .map_err(|_| "Dosya aktarımı iptal edildi.".to_string())?;
+            let decision = match timeout(Duration::from_secs(600), receiver).await {
+                Ok(Ok(decision)) => decision,
+                _ => {
+                    state.transfer_requests.lock().await.remove(&transfer_id);
+                    state.transfer_waiters.lock().await.remove(&transfer_id);
+                    return Err("Dosya aktarımı isteğinin süresi doldu veya iptal edildi.".to_string());
+                }
+            };
             write_json_line(reader.get_mut(), &TransferResponse {
                 kind: "transfer_response".to_string(),
                 accepted: decision.accepted,
@@ -780,7 +793,8 @@ async fn finish_file(
     let stream = state.outbound_streams.lock().await.get(&transfer_id).cloned()
         .ok_or_else(|| "Aktarım bağlantısı bulunamadı.".to_string())?;
     let mut reader = stream.lock().await;
-    let line = read_json_line(&mut reader).await?;
+    let line = timeout(Duration::from_secs(300), read_json_line(&mut reader))
+        .await.map_err(|_| "Dosya alıcısının yanıtı zaman aşımına uğradı.".to_string())??;
     let ack: TransferAck = serde_json::from_str(&line).map_err(|_| "Alıcıdan dosya onayı okunamadı.".to_string())?;
     if ack.kind != "file_received" || ack.file_index != Some(file_index) || !ack.ok {
         return Err(ack.message.unwrap_or_else(|| "Alıcı dosyayı kaydedemedi.".to_string()));
@@ -793,7 +807,8 @@ async fn finish_transfer(state: State<'_, Arc<AppState>>, transfer_id: String) -
     let stream = state.outbound_streams.lock().await.remove(&transfer_id)
         .ok_or_else(|| "Aktarım bağlantısı bulunamadı.".to_string())?;
     let mut reader = stream.lock().await;
-    let line = read_json_line(&mut reader).await?;
+    let line = timeout(Duration::from_secs(300), read_json_line(&mut reader))
+        .await.map_err(|_| "Aktarım tamamlanma yanıtı zaman aşımına uğradı.".to_string())??;
     let ack: TransferCompleteAck = serde_json::from_str(&line).map_err(|_| "Aktarım tamamlanma yanıtı okunamadı.".to_string())?;
     if ack.kind != "transfer_complete" || !ack.ok {
         return Err("Alıcı aktarımı tamamlayamadı.".to_string());
