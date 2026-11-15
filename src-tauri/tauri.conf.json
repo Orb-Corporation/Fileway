@@ -48,7 +48,10 @@
         "displayLanguageSelector": true,
         "languages": [
           "English",
-          "Turkish"
+          "Turkish",
+          "German",
+          "French",
+          "Spanish"
         ],
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
