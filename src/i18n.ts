@@ -79,7 +79,8 @@ const messages = {
     "updateAvailable": "Fileway {version} sürümü hazır. Şimdi indirip kurulsun mu?",
     "updateInstalled": "Güncelleme kuruldu. Fileway yeniden başlatılıyor.",
     "updateFailed": "Güncelleme denetlenemedi veya kurulamadı: {error}",
-    "home": "Fileway ana ekran"
+    "home": "Fileway ana ekran",
+    "fileChanged": "Dosya okunurken boyutu değişti: {name}"
   },
   "en": {
     "language": "Language",
@@ -160,7 +161,8 @@ const messages = {
     "updateAvailable": "Fileway {version} is available. Download and install it now?",
     "updateInstalled": "Update installed. Fileway is restarting.",
     "updateFailed": "Could not check or install the update: {error}",
-    "home": "Fileway home"
+    "home": "Fileway home",
+    "fileChanged": "File size changed while reading: {name}"
   },
   "de": {
     "language": "Sprache",
@@ -241,7 +243,8 @@ const messages = {
     "updateAvailable": "Fileway {version} ist verfügbar. Jetzt installieren?",
     "updateInstalled": "Update installiert. Fileway wird neu gestartet.",
     "updateFailed": "Update konnte nicht geprüft oder installiert werden: {error}",
-    "home": "Fileway-Startseite"
+    "home": "Fileway-Startseite",
+    "fileChanged": "Die Dateigröße hat sich beim Lesen geändert: {name}"
   },
   "fr": {
     "language": "Langue",
@@ -322,7 +325,8 @@ const messages = {
     "updateAvailable": "Fileway {version} est disponible. Installer maintenant ?",
     "updateInstalled": "Mise à jour installée. Redémarrage de Fileway.",
     "updateFailed": "Impossible de vérifier ou d’installer la mise à jour : {error}",
-    "home": "Accueil Fileway"
+    "home": "Accueil Fileway",
+    "fileChanged": "La taille du fichier a changé pendant la lecture : {name}"
   },
   "es": {
     "language": "Idioma",
@@ -403,7 +407,8 @@ const messages = {
     "updateAvailable": "Fileway {version} está disponible. ¿Instalar ahora?",
     "updateInstalled": "Actualización instalada. Fileway se reiniciará.",
     "updateFailed": "No se pudo buscar o instalar la actualización: {error}",
-    "home": "Inicio de Fileway"
+    "home": "Inicio de Fileway",
+    "fileChanged": "El tamaño del archivo cambió durante la lectura: {name}"
   }
 } as const;
 const supported = Object.keys(messages) as Locale[];
