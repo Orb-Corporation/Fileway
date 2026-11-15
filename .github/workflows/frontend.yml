@@ -1,5 +1,9 @@
 name: Fileway checks
 
+concurrency:
+  group: fileway-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
