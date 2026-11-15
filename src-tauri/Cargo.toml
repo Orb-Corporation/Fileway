@@ -1,6 +1,6 @@
 [package]
 name = "fileway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Direct local-network file transfer"
 authors = ["Orb Technologies"]
 edition = "2021"
