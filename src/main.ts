@@ -11,6 +11,17 @@ type FileInfo = { name: string; size: number };
 type TransferRequest = { transferId: string; deviceId: string; deviceName: string; files: FileInfo[]; totalBytes: number };
 type PairedDevice = { id: string; name: string };
 type ReceivedFile = { name: string; size: number; path: string; modified: number };
+type TransferProgress = {
+  transferId: string;
+  direction: "sending" | "receiving";
+  deviceName: string;
+  fileName: string;
+  fileIndex: number;
+  fileCount: number;
+  transferredBytes: number;
+  totalBytes: number;
+  status: "active" | "completed" | "failed";
+};
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const deviceList = $("device-list");
@@ -18,6 +29,8 @@ const pairList = $("pair-list");
 const transferList = $("transfer-list");
 const pairedList = $("paired-list");
 const receivedList = $("received-list");
+const activeTransfersList = $("active-transfers-list");
+const activeTransfers = new Map<string, TransferProgress>();
 let devices: Device[] = [];
 let paired: PairedDevice[] = [];
 let pairRequests: PairRequest[] = [];
@@ -111,6 +124,52 @@ function renderTransfers(): void {
   }).join("") : '<p class="empty-inline">Bekleyen dosya aktarımı yok.</p>';
 }
 
+function updateTransferProgress(progress: TransferProgress): void {
+  activeTransfers.set(progress.transferId, progress);
+  renderActiveTransfers();
+
+  if (progress.status !== "active") {
+    window.setTimeout(() => {
+      if (activeTransfers.get(progress.transferId) === progress) {
+        activeTransfers.delete(progress.transferId);
+        renderActiveTransfers();
+      }
+    }, 6000);
+  }
+}
+
+function renderActiveTransfers(): void {
+  const items = Array.from(activeTransfers.values());
+  if (!items.length) {
+    activeTransfersList.innerHTML = '<p class="empty-inline">Aktif aktarım yok.</p>';
+    return;
+  }
+
+  activeTransfersList.innerHTML = items.map((item) => {
+    const percent = item.totalBytes > 0
+      ? Math.min(100, Math.max(0, Math.round((item.transferredBytes / item.totalBytes) * 100)))
+      : item.status === "completed" ? 100 : 0;
+    const stateLabel = item.status === "completed"
+      ? "Tamamlandı"
+      : item.status === "failed" ? "Başarısız" : item.direction === "sending" ? "Gönderiliyor" : "Alınıyor";
+    const stateClass = item.status === "failed" ? "progress-failed"
+      : item.status === "completed" ? "progress-completed" : "";
+    const directionLabel = item.direction === "sending" ? "Gönderim" : "Alım";
+    const details = item.status === "active"
+      ? `${formatBytes(item.transferredBytes)} / ${formatBytes(item.totalBytes)} · ${percent}%`
+      : item.status === "completed" ? `${formatBytes(item.totalBytes)} aktarıldı` : "Aktarım tamamlanamadı";
+
+    return `<article class="active-transfer-card ${stateClass}">
+      <div class="active-transfer-heading">
+        <div class="request-copy"><strong>${escapeHtml(item.deviceName)}</strong><span>${directionLabel} · ${escapeHtml(item.fileName)} · ${item.fileIndex + 1}/${item.fileCount} dosya</span></div>
+        <span class="transfer-state">${stateLabel}</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <div class="progress-meta"><span>${details}</span><span>${escapeHtml(item.fileName)}</span></div>
+    </article>`;
+  }).join("");
+}
+
 function renderPaired(): void {
   $("paired-count").textContent = `${paired.length} cihaz`;
   pairedList.innerHTML = paired.length ? paired.map((peer) => `
@@ -151,6 +210,7 @@ function render(): void {
   renderDevices();
   renderPairs();
   renderTransfers();
+  renderActiveTransfers();
   renderPaired();
   void renderReceived();
 }
@@ -192,8 +252,21 @@ async function sendTo(device: Device): Promise<void> {
     if (!selections.length) throw new Error("Seçilen dosya bulunamadı.");
 
     const metadata = selections.map(({ name, size }) => ({ name, size }));
+    const totalBytes = metadata.reduce((total, file) => total + file.size, 0);
+    let transferredBytes = 0;
     toast(`${metadata.length} dosya için karşı cihazın onayı bekleniyor.`);
     transferId = await invoke<string>("start_transfer", { deviceId: device.id, files: metadata });
+    updateTransferProgress({
+      transferId,
+      direction: "sending",
+      deviceName: device.name,
+      fileName: metadata[0].name,
+      fileIndex: 0,
+      fileCount: metadata.length,
+      transferredBytes: 0,
+      totalBytes,
+      status: "active",
+    });
 
     for (let fileIndex = 0; fileIndex < selections.length; fileIndex++) {
       const selection = selections[fileIndex];
@@ -211,6 +284,18 @@ async function sendTo(device: Device): Promise<void> {
             bytes: Array.from(chunk.subarray(0, count)),
           });
           sent += count;
+          transferredBytes += count;
+          updateTransferProgress({
+            transferId,
+            direction: "sending",
+            deviceName: device.name,
+            fileName: selection.name,
+            fileIndex,
+            fileCount: selections.length,
+            transferredBytes,
+            totalBytes,
+            status: "active",
+          });
         }
       } finally {
         await handle.close();
@@ -220,9 +305,24 @@ async function sendTo(device: Device): Promise<void> {
     }
 
     await invoke("finish_transfer", { transferId });
+    updateTransferProgress({
+      transferId,
+      direction: "sending",
+      deviceName: device.name,
+      fileName: selections[selections.length - 1].name,
+      fileIndex: selections.length - 1,
+      fileCount: selections.length,
+      transferredBytes: totalBytes,
+      totalBytes,
+      status: "completed",
+    });
     toast("Dosyalar başarıyla gönderildi.");
   } catch (error) {
-    if (transferId) await invoke("cancel_transfer", { transferId }).catch(() => undefined);
+    if (transferId) {
+      await invoke("cancel_transfer", { transferId }).catch(() => undefined);
+      const current = activeTransfers.get(transferId);
+      if (current) updateTransferProgress({ ...current, status: "failed" });
+    }
     toast(`Aktarım tamamlanamadı: ${String(error)}`, true);
   } finally {
     busy = false;
@@ -289,6 +389,9 @@ async function start(): Promise<void> {
   await listen("devices-updated", () => { void refresh(); });
   await listen("pair-request", () => { void refresh(); });
   await listen("transfer-request", () => { void refresh(); });
+  await listen<TransferProgress>("transfer-progress", (event) => {
+    updateTransferProgress(event.payload);
+  });
   await listen("file-received", () => { void renderReceived(); });
   await listen("network-error", (event) => {
     $("network-label").textContent = "Ağ erişimi engellendi";
