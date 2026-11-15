@@ -54,6 +54,9 @@
         "uninstallerIcon": "icons/icon.ico",
         "startMenuFolder": "Fileway"
       }
+    },
+    "android": {
+      "versionCode": 2
     }
   },
   "plugins": {
