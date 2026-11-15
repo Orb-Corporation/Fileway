@@ -39,6 +39,20 @@
       "icons/icon.png",
       "icons/icon.ico",
       "icons/icon.icns"
-    ]
+    ],
+    "windows": {
+      "allowDowngrades": true,
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "languages": [
+          "English",
+          "Turkish"
+        ],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "startMenuFolder": "Fileway"
+      }
+    }
   }
 }

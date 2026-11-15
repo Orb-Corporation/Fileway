@@ -43,6 +43,16 @@ Build a desktop package:
 
     npm run tauri build
 
+## Installers
+
+The **Fileway installers** workflow on GitHub Actions builds:
+
+- Windows: an NSIS `*-setup.exe` wizard for the current user, with Turkish/English language selection and a Start Menu shortcut.
+- macOS: a `.dmg` disk image.
+- Linux: `.deb` and `.AppImage` packages.
+
+Open the repository's Actions tab, select **Fileway installers**, and run the workflow with **Run workflow**. Download the platform artifact from the completed run. Windows and macOS installers are currently unsigned, so the operating system may display an unknown-publisher warning. This is not a signing certificate and should not be confused with a malware verdict.
+
 For Android, initialize the Tauri Android project once, apply the manifest permissions, then use the Android toolchain:
 
     npm run tauri:android:init
