@@ -182,12 +182,14 @@ async function sendTo(device: Device): Promise<void> {
       const buffer = new Uint8Array(256 * 1024);
       let sent = 0;
       try {
-        while (true) {
-          const count = await handle.read(buffer);
+        while (sent < selection.size) {
+          const remaining = selection.size - sent;
+          const chunk = buffer.subarray(0, Math.min(buffer.length, remaining));
+          const count = await handle.read(chunk);
           if (count === null || count === 0) break;
           await invoke("write_file_chunk", {
             transferId,
-            bytes: Array.from(buffer.subarray(0, count)),
+            bytes: Array.from(chunk.subarray(0, count)),
           });
           sent += count;
         }
