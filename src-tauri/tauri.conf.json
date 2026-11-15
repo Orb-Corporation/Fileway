@@ -22,7 +22,8 @@
     ],
     "security": {
       "capabilities": [
-        "default"
+        "default",
+        "desktop-updater"
       ]
     }
   },
@@ -52,6 +53,17 @@
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
         "startMenuFolder": "Fileway"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_FILEWAY_TAURI_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/Orb-Corporation/Fileway/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }
