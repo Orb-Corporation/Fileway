@@ -43,6 +43,10 @@ Build a desktop package:
 
     npm run tauri build
 
+## Updates
+
+Desktop in-app updates use Tauri's signed updater. Complete the one-time public/private key and GitHub Secrets setup in [docs/UPDATES.md](docs/UPDATES.md) before publishing signed updates. Keep the private signing key outside the repository. Android updates are distributed as signed APKs.
+
 ## Installers
 
 The **Fileway installers** workflow on GitHub Actions builds:
