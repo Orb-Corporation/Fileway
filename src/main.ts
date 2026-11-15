@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { copyFile, open as openFile, stat } from "@tauri-apps/plugin-fs";
+import { check } from "@tauri-apps/plugin-updater";
+import { getLocale, setLocale, t, type Locale } from "./i18n";
 import "./style.css";
 
 type Device = { id: string; name: string; ip: string; port: number; lastSeen: number; paired: boolean };
@@ -47,7 +49,7 @@ function escapeHtml(value: string): string {
 }
 
 function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return "Bilinmeyen boyut";
+  if (!Number.isFinite(bytes) || bytes < 0) return t("unknownSize");
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB", "TB"];
   let value = bytes / 1024;
@@ -79,49 +81,49 @@ async function refresh(): Promise<void> {
     pairRequests = pairQueue;
     transferRequests = transferQueue;
     paired = pairedDevices;
-    $("network-label").textContent = "Yerel ağ taranıyor";
+    $("network-label").textContent = t("networkScanning");
     render();
   } catch (error) {
-    $("network-label").textContent = "Ağ servisi başlatılamadı";
+    $("network-label").textContent = t("networkFailed");
     toast(String(error), true);
   }
 }
 
 function renderDevices(): void {
-  $("device-count").textContent = `${devices.length} cihaz`;
+  $("device-count").textContent = t("deviceCount", { count: devices.length });
   if (!devices.length) {
-    deviceList.innerHTML = `<div class="empty-state"><span class="empty-icon">⌁</span><strong>Henüz cihaz bulunamadı</strong><p>Diğer cihazlarda Fileway'in açık olduğundan ve aynı Wi-Fi/Ethernet ağına bağlı olduğundan emin ol.</p></div>`;
+    deviceList.innerHTML = `<div class="empty-state"><span class="empty-icon">⌁</span><strong>${t("noDevices")}</strong><p>${t("noDevicesHint")}</p></div>`;
     return;
   }
   deviceList.innerHTML = devices.map((device) => {
     const isPaired = paired.some((peer) => peer.id === device.id);
     return `<article class="device-row">
       <div class="avatar">${escapeHtml(device.name.slice(0, 1).toUpperCase())}</div>
-      <div class="device-details"><strong>${escapeHtml(device.name)}</strong><span>${escapeHtml(device.ip)} · ${isPaired ? "Eşleşmiş" : "Yeni cihaz"}</span></div>
-      <button class="button ${isPaired ? "button-primary" : "button-secondary"}" data-action="${isPaired ? "send" : "pair"}" data-id="${escapeHtml(device.id)}">${isPaired ? "Dosya gönder" : "Eşleş"}</button>
+      <div class="device-details"><strong>${escapeHtml(device.name)}</strong><span>${escapeHtml(device.ip)} · ${isPaired ? t("paired") : t("newDevice")}</span></div>
+      <button class="button ${isPaired ? "button-primary" : "button-secondary"}" data-action="${isPaired ? "send" : "pair"}" data-id="${escapeHtml(device.id)}">${isPaired ? t("sendFiles") : t("pair")}</button>
     </article>`;
   }).join("");
 }
 
 function renderPairs(): void {
-  $("pair-count").textContent = `${pairRequests.length} bekliyor`;
+  $("pair-count").textContent = t("pending", { count: pairRequests.length });
   pairList.innerHTML = pairRequests.length ? pairRequests.map((request) => `
     <article class="request-row">
-      <div class="request-copy"><strong>${escapeHtml(request.deviceName)}</strong><span>${escapeHtml(request.address)} · eşleşmek istiyor</span></div>
-      <div class="request-actions"><button class="button button-quiet" data-action="decline-pair" data-id="${escapeHtml(request.requestId)}">Reddet</button><button class="button button-primary" data-action="accept-pair" data-id="${escapeHtml(request.requestId)}">Kabul et</button></div>
-    </article>`).join("") : '<p class="empty-inline">Bekleyen eşleşme isteği yok.</p>';
+      <div class="request-copy"><strong>${escapeHtml(request.deviceName)}</strong><span>${escapeHtml(request.address)} · ${t("wantsPair")}</span></div>
+      <div class="request-actions"><button class="button button-quiet" data-action="decline-pair" data-id="${escapeHtml(request.requestId)}">${t("decline")}</button><button class="button button-primary" data-action="accept-pair" data-id="${escapeHtml(request.requestId)}">${t("accept")}</button></div>
+    </article>`).join("") : `<p class="empty-inline">${t("noPairRequests")}</p>`;
 }
 
 function renderTransfers(): void {
-  $("transfer-count").textContent = `${transferRequests.length} bekliyor`;
+  $("transfer-count").textContent = t("pending", { count: transferRequests.length });
   transferList.innerHTML = transferRequests.length ? transferRequests.map((request) => {
     const files = request.files.map((file) => `<li><span>${escapeHtml(file.name)}</span><span>${formatBytes(file.size)}</span></li>`).join("");
     return `<article class="transfer-card">
-      <div class="request-copy"><strong>${escapeHtml(request.deviceName)} dosya göndermek istiyor</strong><span>${request.files.length} dosya · toplam ${formatBytes(request.totalBytes)}</span></div>
+      <div class="request-copy"><strong>${escapeHtml(request.deviceName)} ${t("wantsFiles")}</strong><span>${t("files", { count: request.files.length })} · ${t("total", { size: formatBytes(request.totalBytes) })}</span></div>
       <ul class="file-preview">${files}</ul>
-      <div class="request-actions"><button class="button button-quiet" data-action="decline-transfer" data-id="${escapeHtml(request.transferId)}">Reddet</button><button class="button button-primary" data-action="accept-transfer" data-id="${escapeHtml(request.transferId)}">Dosyaları kabul et</button></div>
+      <div class="request-actions"><button class="button button-quiet" data-action="decline-transfer" data-id="${escapeHtml(request.transferId)}">${t("decline")}</button><button class="button button-primary" data-action="accept-transfer" data-id="${escapeHtml(request.transferId)}">${t("acceptFiles")}</button></div>
     </article>`;
-  }).join("") : '<p class="empty-inline">Bekleyen dosya aktarımı yok.</p>';
+  }).join("") : `<p class="empty-inline">${t("noTransfers")}</p>`;
 }
 
 function updateTransferProgress(progress: TransferProgress): void {
@@ -141,7 +143,7 @@ function updateTransferProgress(progress: TransferProgress): void {
 function renderActiveTransfers(): void {
   const items = Array.from(activeTransfers.values());
   if (!items.length) {
-    activeTransfersList.innerHTML = '<p class="empty-inline">Aktif aktarım yok.</p>';
+    activeTransfersList.innerHTML = `<p class="empty-inline">${t("noActiveTransfers")}</p>`;
     return;
   }
 
@@ -150,18 +152,18 @@ function renderActiveTransfers(): void {
       ? Math.min(100, Math.max(0, Math.round((item.transferredBytes / item.totalBytes) * 100)))
       : item.status === "completed" ? 100 : 0;
     const stateLabel = item.status === "completed"
-      ? "Tamamlandı"
-      : item.status === "failed" ? "Başarısız" : item.direction === "sending" ? "Gönderiliyor" : "Alınıyor";
+      ? t("completed")
+      : item.status === "failed" ? t("failed") : item.direction === "sending" ? t("sending") : t("receiving");
     const stateClass = item.status === "failed" ? "progress-failed"
       : item.status === "completed" ? "progress-completed" : "";
-    const directionLabel = item.direction === "sending" ? "Gönderim" : "Alım";
+    const directionLabel = item.direction === "sending" ? t("sent") : t("received");
     const details = item.status === "active"
       ? `${formatBytes(item.transferredBytes)} / ${formatBytes(item.totalBytes)} · ${percent}%`
-      : item.status === "completed" ? `${formatBytes(item.totalBytes)} aktarıldı` : "Aktarım tamamlanamadı";
+      : item.status === "completed" ? t("transferred", { size: formatBytes(item.totalBytes) }) : t("transferFailed");
 
     return `<article class="active-transfer-card ${stateClass}">
       <div class="active-transfer-heading">
-        <div class="request-copy"><strong>${escapeHtml(item.deviceName)}</strong><span>${directionLabel} · ${escapeHtml(item.fileName)} · ${item.fileIndex + 1}/${item.fileCount} dosya</span></div>
+        <div class="request-copy"><strong>${escapeHtml(item.deviceName)}</strong><span>${directionLabel} · ${escapeHtml(item.fileName)} · ${t("fileProgress", { current: item.fileIndex + 1, total: item.fileCount })}</span></div>
         <span class="transfer-state">${stateLabel}</span>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
@@ -171,10 +173,10 @@ function renderActiveTransfers(): void {
 }
 
 function renderPaired(): void {
-  $("paired-count").textContent = `${paired.length} cihaz`;
+  $("paired-count").textContent = t("deviceCount", { count: paired.length });
   pairedList.innerHTML = paired.length ? paired.map((peer) => `
-    <article class="paired-row"><div class="avatar avatar-small">${escapeHtml(peer.name.slice(0, 1).toUpperCase())}</div><strong>${escapeHtml(peer.name)}</strong><button class="text-button" data-action="unpair" data-id="${escapeHtml(peer.id)}">Eşleşmeyi kaldır</button></article>`
-  ).join("") : '<p class="empty-inline">Henüz eşleşmiş cihaz yok.</p>';
+    <article class="paired-row"><div class="avatar avatar-small">${escapeHtml(peer.name.slice(0, 1).toUpperCase())}</div><strong>${escapeHtml(peer.name)}</strong><button class="text-button" data-action="unpair" data-id="${escapeHtml(peer.id)}">${t("removePair")}</button></article>`
+  ).join("") : `<p class="empty-inline">${t("noPaired")}</p>`;
 }
 
 async function renderReceived(): Promise<void> {
@@ -186,24 +188,24 @@ async function renderReceived(): Promise<void> {
         <div class="device-details"><strong>${escapeHtml(file.name)}</strong><span>${formatBytes(file.size)} · ${new Date(Number(file.modified)).toLocaleString()}</span></div>
         <button class="button button-secondary" data-action="export" data-id="${escapeHtml(file.name)}">Dışa aktar</button>
       </article>`
-    ).join("") : '<p class="empty-inline">Henüz dosya alınmadı.</p>';
+    ).join("") : `<p class="empty-inline">${t("noReceived")}</p>`;
   } catch (error) {
-    receivedList.innerHTML = `<p class="empty-inline">Dosyalar okunamadı: ${escapeHtml(String(error))}</p>`;
+    receivedList.innerHTML = `<p class="empty-inline">${t("readError", { error: escapeHtml(String(error)) })}</p>`;
   }
 }
 
 async function exportReceivedFile(name: string): Promise<void> {
   const file = receivedFiles.find((item) => item.name === name);
-  if (!file) throw new Error("Dışa aktarılacak dosya artık mevcut değil.");
+  if (!file) throw new Error(t("fileMissing"));
 
   const destination = await saveDialog({
     defaultPath: file.name,
-    title: "Dosyayı dışa aktar",
+    title: t("exportDialog"),
   });
   if (!destination) return;
 
   await copyFile(file.path, destination);
-  toast(`${file.name} dışa aktarıldı.`);
+  toast(t("exported", { name: file.name }));
 }
 
 function render(): void {
@@ -212,19 +214,18 @@ function render(): void {
   renderTransfers();
   renderActiveTransfers();
   renderPaired();
-  void renderReceived();
 }
 
 async function requestPair(deviceId: string): Promise<void> {
   if (busy) return;
   busy = true;
   try {
-    toast("Eşleşme isteği gönderildi. Karşı cihazın onayı bekleniyor.");
+    toast(t("pairWait"));
     await invoke("request_pairing", { deviceId });
-    toast("Cihazlar eşleştirildi.");
+    toast(t("pairSuccess"));
     await refresh();
   } catch (error) {
-    toast(`Eşleşme başarısız: ${String(error)}`, true);
+    toast(t("pairFailed", { error: String(error) }), true);
   } finally {
     busy = false;
   }
@@ -232,7 +233,7 @@ async function requestPair(deviceId: string): Promise<void> {
 
 async function sendTo(device: Device): Promise<void> {
   if (busy) return;
-  const selected = await openDialog({ multiple: true, title: "Gönderilecek dosyaları seç" });
+  const selected = await openDialog({ multiple: true, title: t("selectFiles") });
   if (!selected) return;
   const paths = Array.isArray(selected) ? selected : [selected];
   if (!paths.length) return;
@@ -249,12 +250,12 @@ async function sendTo(device: Device): Promise<void> {
       try { name = decodeURIComponent(rawName); } catch { /* Keep the platform-provided name. */ }
       selections.push({ path, name, size: Number(info.size) });
     }
-    if (!selections.length) throw new Error("Seçilen dosya bulunamadı.");
+    if (!selections.length) throw new Error(t("noFiles"));
 
     const metadata = selections.map(({ name, size }) => ({ name, size }));
     const totalBytes = metadata.reduce((total, file) => total + file.size, 0);
     let transferredBytes = 0;
-    toast(`${metadata.length} dosya için karşı cihazın onayı bekleniyor.`);
+    toast(t("sendWait", { count: metadata.length }));
     transferId = await invoke<string>("start_transfer", { deviceId: device.id, files: metadata });
     updateTransferProgress({
       transferId,
@@ -316,14 +317,14 @@ async function sendTo(device: Device): Promise<void> {
       totalBytes,
       status: "completed",
     });
-    toast("Dosyalar başarıyla gönderildi.");
+    toast(t("sendSuccess"));
   } catch (error) {
     if (transferId) {
       await invoke("cancel_transfer", { transferId }).catch(() => undefined);
       const current = activeTransfers.get(transferId);
       if (current) updateTransferProgress({ ...current, status: "failed" });
     }
-    toast(`Aktarım tamamlanamadı: ${String(error)}`, true);
+    toast(t("sendFailed", { error: String(error) }), true);
   } finally {
     busy = false;
     await refresh();
@@ -343,7 +344,7 @@ async function handleAction(action: string, id: string): Promise<void> {
       }
       case "accept-pair":
         await invoke("respond_to_pair_request", { requestId: id, accept: true });
-        toast("Eşleşme kabul edildi.");
+        toast(t("pairAccepted"));
         await refresh();
         break;
       case "decline-pair":
@@ -352,7 +353,7 @@ async function handleAction(action: string, id: string): Promise<void> {
         break;
       case "accept-transfer":
         await invoke("respond_to_transfer", { transferId: id, accept: true });
-        toast("Dosyalar alınıyor.");
+        toast(t("receivingToast"));
         await refresh();
         break;
       case "decline-transfer":
@@ -386,19 +387,74 @@ $("scan-button").addEventListener("click", () => {
 $("refresh-received").addEventListener("click", () => { void renderReceived(); });
 
 async function start(): Promise<void> {
-  await listen("devices-updated", () => { void refresh(); });
-  await listen("pair-request", () => { void refresh(); });
-  await listen("transfer-request", () => { void refresh(); });
+  await listen<Device[]>("devices-updated", (event) => {
+    devices = event.payload;
+    renderDevices();
+  });
+  const reloadPairs = async () => {
+    pairRequests = await invoke<PairRequest[]>("get_pair_requests");
+    renderPairs();
+  };
+  const reloadTransfers = async () => {
+    transferRequests = await invoke<TransferRequest[]>("get_transfer_requests");
+    renderTransfers();
+  };
+  await listen("pair-request", () => { void reloadPairs(); });
+  await listen("pair-queue-updated", () => { void reloadPairs(); });
+  await listen("transfer-request", () => { void reloadTransfers(); });
+  await listen("transfer-queue-updated", () => { void reloadTransfers(); });
   await listen<TransferProgress>("transfer-progress", (event) => {
     updateTransferProgress(event.payload);
   });
   await listen("file-received", () => { void renderReceived(); });
   await listen("network-error", (event) => {
-    $("network-label").textContent = "Ağ erişimi engellendi";
+    $("network-label").textContent = t("networkBlocked");
     toast(String(event.payload), true);
   });
   await refresh();
-  window.setInterval(() => { void refresh(); }, 3000);
+  await renderReceived();
+  const updateButton = $("check-updates") as HTMLButtonElement;
+  const canUpdate = await invoke<boolean>("updater_supported").catch(() => false);
+  updateButton.hidden = !canUpdate;
 }
 
+const localeSelect = $("language-select") as HTMLSelectElement;
+function applyLanguage(): void {
+  const locale = getLocale();
+  document.documentElement.lang = locale;
+  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
+    const key = element.dataset.i18n;
+    if (key) element.textContent = t(key);
+  });
+  document.querySelectorAll<HTMLElement>("[data-i18n-aria]").forEach((element) => {
+    const key = element.dataset.i18nAria;
+    if (key) element.setAttribute("aria-label", t(key));
+  });
+  localeSelect.value = locale;
+}
+applyLanguage();
+localeSelect.addEventListener("change", () => {
+  setLocale(localeSelect.value as Locale);
+  applyLanguage();
+  render();
+  void renderReceived();
+});
+$("check-updates").addEventListener("click", async () => {
+  const button = $("check-updates") as HTMLButtonElement;
+  button.disabled = true;
+  button.textContent = t("checkingUpdates");
+  try {
+    const update = await check();
+    if (!update) { toast(t("upToDate")); return; }
+    if (!window.confirm(t("updateAvailable", { version: update.version }))) return;
+    await update.downloadAndInstall();
+    toast(t("updateInstalled"));
+    await invoke("restart_app");
+  } catch (error) {
+    toast(t("updateFailed", { error: String(error) }), true);
+  } finally {
+    button.disabled = false;
+    button.textContent = t("checkUpdates");
+  }
+});
 void start();
