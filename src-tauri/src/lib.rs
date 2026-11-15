@@ -23,8 +23,8 @@ use uuid::Uuid;
 const DISCOVERY_PORT: u16 = 39147;
 const TRANSFER_PORT: u16 = 39148;
 const PROTOCOL_VERSION: u8 = 1;
-const BEACON_INTERVAL: Duration = Duration::from_secs(2);
-const DEVICE_TTL: u64 = 12;
+const BEACON_INTERVAL: Duration = Duration::from_secs(4);
+const DEVICE_TTL: u64 = 16;
 const MAX_HEADER_BYTES: usize = 256 * 1024;
 const MAX_FILES_PER_TRANSFER: usize = 128;
 const MAX_TRANSFER_BYTES: u64 = 100 * 1024 * 1024 * 1024;
@@ -819,6 +819,12 @@ fn unix_millis() -> u128 {
 }
 
 #[tauri::command]
+fn updater_supported() -> bool { cfg!(desktop) }
+
+#[tauri::command]
+fn restart_app(app: AppHandle) { app.restart(); }
+
+#[tauri::command]
 fn get_device_info(state: State<'_, Arc<AppState>>) -> DeviceInfo {
     state.identity.clone()
 }
@@ -1083,6 +1089,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             let state = Arc::new(AppState::new(app.handle())?);
             app.manage(state.clone());
             start_transfer_server(state.clone());
@@ -1090,6 +1098,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            updater_supported,
+            restart_app,
             get_device_info,
             get_discovered_devices,
             get_pair_requests,
