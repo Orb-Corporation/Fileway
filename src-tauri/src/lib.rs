@@ -3,7 +3,7 @@ compile_error!("Fileway intentionally does not support iOS.");
 
 use std::{
     collections::HashMap,
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::{
     fs,
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    io::{AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream, UdpSocket},
     sync::{oneshot, Mutex},
     time::{interval, timeout},
@@ -295,10 +295,25 @@ fn unix_seconds() -> u64 {
 fn sanitize_filename(input: &str) -> String {
     let leaf = input.rsplit(['/', '\\']).next().unwrap_or("file");
     let cleaned = leaf.chars()
-        .filter(|character| !character.is_control() && *character != '/' && *character != '\\' && *character != ':')
+        .filter(|character| {
+            !character.is_control()
+                && !matches!(*character, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
         .collect::<String>();
-    let cleaned = cleaned.trim().trim_matches('.');
-    if cleaned.is_empty() { "file".to_string() } else { cleaned.chars().take(180).collect() }
+    let cleaned = cleaned.trim().trim_matches(|character| character == '.' || character == ' ');
+    if cleaned.is_empty() {
+        return "file".to_string();
+    }
+
+    let windows_stem = cleaned.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
+    let reserved = matches!(windows_stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            windows_stem.strip_prefix(prefix)
+                .and_then(|suffix| suffix.parse::<u8>().ok())
+                .is_some_and(|number| (1..=9).contains(&number))
+        });
+    let safe_name = if reserved { format!("_{cleaned}") } else { cleaned.to_string() };
+    safe_name.chars().take(180).collect()
 }
 
 fn unique_target(directory: &Path, original_name: &str) -> PathBuf {
@@ -330,11 +345,42 @@ async fn write_json_line<T: Serialize>(
 }
 
 async fn read_json_line(reader: &mut BufReader<TcpStream>) -> Result<String, String> {
-    let mut line = String::new();
-    let count = reader.read_line(&mut line).await.map_err(|error| error.to_string())?;
-    if count == 0 { return Err("Bağlantı karşı cihaz tarafından kapatıldı.".to_string()); }
-    if line.len() > MAX_HEADER_BYTES { return Err("Ağ mesajı izin verilen boyutu aşıyor.".to_string()); }
-    Ok(line)
+    let mut bytes = Vec::with_capacity(256);
+    loop {
+        let byte = reader.read_u8().await
+            .map_err(|error| format!("Bağlantıdan mesaj okunamadı: {error}"))?;
+        if byte == b'\n' {
+            break;
+        }
+        if bytes.len() >= MAX_HEADER_BYTES {
+            return Err("Ağ mesajı izin verilen boyutu aşıyor.".to_string());
+        }
+        bytes.push(byte);
+    }
+    String::from_utf8(bytes).map_err(|_| "Ağ mesajı geçerli UTF-8 değil.".to_string())
+}
+
+fn is_same_local_subnet(peer: IpAddr) -> bool {
+    match peer {
+        IpAddr::V4(peer) if peer.is_loopback() => true,
+        IpAddr::V4(peer) => {
+            let peer_bits = u32::from(peer);
+            if_addrs::get_if_addrs().map(|interfaces| {
+                interfaces.into_iter().any(|interface| {
+                    if let if_addrs::IfAddr::V4(address) = interface.addr {
+                        if address.ip.is_loopback() || address.ip.is_unspecified() {
+                            return false;
+                        }
+                        let mask = u32::from(address.netmask);
+                        (peer_bits & mask) == (u32::from(address.ip) & mask)
+                    } else {
+                        false
+                    }
+                })
+            }).unwrap_or(false)
+        }
+        IpAddr::V6(peer) => peer.is_loopback(),
+    }
 }
 
 fn broadcast_targets() -> Vec<SocketAddr> {
@@ -449,6 +495,9 @@ async fn handle_connection(
     address: SocketAddr,
     state: Arc<AppState>,
 ) -> Result<(), String> {
+    if !is_same_local_subnet(address.ip()) {
+        return Err("Fileway yalnızca aynı yerel ağdaki cihazlardan bağlantı kabul eder.".to_string());
+    }
     let mut reader = BufReader::new(stream);
     let line = timeout(Duration::from_secs(30), read_json_line(&mut reader))
         .await.map_err(|_| "İlk ağ mesajı zaman aşımına uğradı.".to_string())??;
@@ -896,4 +945,25 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Fileway");
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filename_sanitization_removes_paths_and_windows_unsafe_characters() {
+        assert_eq!(sanitize_filename("../../folder/hello:world?.txt"), "helloworld.txt");
+        assert_eq!(sanitize_filename(r"C:\private\secret.txt"), "secret.txt");
+        assert_eq!(sanitize_filename("  ..  "), "file");
+        assert_eq!(sanitize_filename("CON.txt"), "_CON.txt");
+        assert_eq!(sanitize_filename("LPT1.log"), "_LPT1.log");
+    }
+
+    #[test]
+    fn local_subnet_check_allows_loopback_only_for_local_testing() {
+        assert!(is_same_local_subnet(IpAddr::V4(Ipv4Addr::LOCALHOST)));
+        assert!(is_same_local_subnet(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)));
+    }
 }
