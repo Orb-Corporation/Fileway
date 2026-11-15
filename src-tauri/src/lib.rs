@@ -631,140 +631,185 @@ async fn handle_connection(
             }).await?;
             if !decision.accepted { return Ok(()); }
 
-            let receive_dir = state.data_dir.join("Received");
-            let mut received_total = 0u64;
-            let mut last_progress_at = std::time::Instant::now();
-            if let Some(first_file) = view.files.first() {
+            let receive_result = receive_accepted_transfer(
+                &mut reader,
+                state.as_ref(),
+                &transfer_id,
+                &view,
+            ).await;
+
+            state.transfer_requests.lock().await.remove(&transfer_id);
+            state.transfer_waiters.lock().await.remove(&transfer_id);
+            let _ = state.app.emit("transfer-queue-updated", ());
+
+            if let Err((error, file_index, transferred_bytes)) = receive_result {
+                let file_name = view.files.get(file_index)
+                    .map(|file| file.name.clone())
+                    .unwrap_or_default();
                 state.emit_transfer_progress(TransferProgress {
                     transfer_id: transfer_id.clone(),
                     direction: "receiving".to_string(),
                     device_name: view.device_name.clone(),
-                    file_name: first_file.name.clone(),
-                    file_index: 0,
+                    file_name,
+                    file_index,
                     file_count: view.files.len(),
-                    transferred_bytes: 0,
+                    transferred_bytes,
+                    total_bytes: view.total_bytes,
+                    status: "failed".to_string(),
+                });
+                return Err(error);
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn receive_accepted_transfer(
+    reader: &mut BufReader<TcpStream>,
+    state: &AppState,
+    transfer_id: &str,
+    view: &TransferRequestView,
+) -> Result<(), (String, usize, u64)> {
+    let receive_dir = state.data_dir.join("Received");
+    fs::create_dir_all(&receive_dir)
+        .await
+        .map_err(|error| (format!("Alınan dosyalar klasörü oluşturulamadı: {error}"), 0, 0))?;
+
+    let mut received_total = 0u64;
+    let mut last_progress_at = std::time::Instant::now();
+    if let Some(first_file) = view.files.first() {
+        state.emit_transfer_progress(TransferProgress {
+            transfer_id: transfer_id.to_string(),
+            direction: "receiving".to_string(),
+            device_name: view.device_name.clone(),
+            file_name: first_file.name.clone(),
+            file_index: 0,
+            file_count: view.files.len(),
+            transferred_bytes: 0,
+            total_bytes: view.total_bytes,
+            status: "active".to_string(),
+        });
+    }
+
+    for (index, info) in view.files.iter().enumerate() {
+        let final_path = unique_target(&receive_dir, &info.name);
+        let part_path = receive_dir.join(format!(".fileway-{}-{index}.part", Uuid::new_v4()));
+        let mut output = fs::File::create(&part_path)
+            .await
+            .map_err(|error| (
+                format!("Geçici dosya oluşturulamadı: {error}"),
+                index,
+                received_total,
+            ))?;
+
+        let mut remaining = info.size;
+        let mut buffer = vec![0u8; IO_CHUNK_BYTES];
+        let mut file_error: Option<String> = None;
+
+        while remaining > 0 {
+            let count = remaining.min(buffer.len() as u64) as usize;
+            match timeout(
+                TRANSFER_IDLE_TIMEOUT,
+                reader.read_exact(&mut buffer[..count]),
+            ).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => {
+                    file_error = Some(format!("Dosya aktarımı yarıda kesildi: {error}"));
+                    break;
+                }
+                Err(_) => {
+                    file_error = Some("Gönderici 90 saniyedir veri göndermiyor; aktarım durduruldu.".to_string());
+                    break;
+                }
+            }
+
+            if let Err(error) = output.write_all(&buffer[..count]).await {
+                file_error = Some(format!("Dosya diske yazılamadı: {error}"));
+                break;
+            }
+
+            remaining -= count as u64;
+            received_total += count as u64;
+            if last_progress_at.elapsed() >= Duration::from_millis(250)
+                || received_total == view.total_bytes
+            {
+                state.emit_transfer_progress(TransferProgress {
+                    transfer_id: transfer_id.to_string(),
+                    direction: "receiving".to_string(),
+                    device_name: view.device_name.clone(),
+                    file_name: info.name.clone(),
+                    file_index: index,
+                    file_count: view.files.len(),
+                    transferred_bytes: received_total,
                     total_bytes: view.total_bytes,
                     status: "active".to_string(),
                 });
+                last_progress_at = std::time::Instant::now();
             }
-            fs::create_dir_all(&receive_dir).await.map_err(|error| error.to_string())?;
-            for (index, info) in view.files.iter().enumerate() {
-                let final_path = unique_target(&receive_dir, &info.name);
-                let part_path = receive_dir.join(format!(".fileway-{}-{index}.part", Uuid::new_v4()));
-                let mut output = fs::File::create(&part_path)
-                    .await
-                    .map_err(|error| format!("Geçici dosya oluşturulamadı: {error}"))?;
-                let mut remaining = info.size;
-                let mut buffer = vec![0u8; IO_CHUNK_BYTES];
-                let mut file_error: Option<String> = None;
-
-                while remaining > 0 {
-                    let count = remaining.min(buffer.len() as u64) as usize;
-                    match timeout(
-                        TRANSFER_IDLE_TIMEOUT,
-                        reader.read_exact(&mut buffer[..count]),
-                    ).await {
-                        Ok(Ok(_)) => {}
-                        Ok(Err(error)) => {
-                            file_error = Some(format!("Dosya aktarımı yarıda kesildi: {error}"));
-                            break;
-                        }
-                        Err(_) => {
-                            file_error = Some("Gönderici 90 saniyedir veri göndermiyor; aktarım durduruldu.".to_string());
-                            break;
-                        }
-                    }
-
-                    if let Err(error) = output.write_all(&buffer[..count]).await {
-                        file_error = Some(format!("Dosya diske yazılamadı: {error}"));
-                        break;
-                    }
-                    remaining -= count as u64;
-                    received_total += count as u64;
-                    if last_progress_at.elapsed() >= Duration::from_millis(250)
-                        || received_total == view.total_bytes
-                    {
-                        state.emit_transfer_progress(TransferProgress {
-                            transfer_id: transfer_id.clone(),
-                            direction: "receiving".to_string(),
-                            device_name: view.device_name.clone(),
-                            file_name: info.name.clone(),
-                            file_index: index,
-                            file_count: view.files.len(),
-                            transferred_bytes: received_total,
-                            total_bytes: view.total_bytes,
-                            status: "active".to_string(),
-                        });
-                        last_progress_at = std::time::Instant::now();
-                    }
-                }
-
-                if file_error.is_none() {
-                    if let Err(error) = output.flush().await {
-                        file_error = Some(format!("Dosya diske yazılamadı: {error}"));
-                    }
-                }
-                drop(output);
-
-                if let Some(error) = file_error {
-                    let _ = fs::remove_file(&part_path).await;
-                    state.emit_transfer_progress(TransferProgress {
-                        transfer_id: transfer_id.clone(),
-                        direction: "receiving".to_string(),
-                        device_name: view.device_name.clone(),
-                        file_name: info.name.clone(),
-                        file_index: index,
-                        file_count: view.files.len(),
-                        transferred_bytes: received_total,
-                        total_bytes: view.total_bytes,
-                        status: "failed".to_string(),
-                    });
-                    return Err(error);
-                }
-
-                if let Err(error) = fs::rename(&part_path, &final_path).await {
-                    let _ = fs::remove_file(&part_path).await;
-                    state.emit_transfer_progress(TransferProgress {
-                        transfer_id: transfer_id.clone(),
-                        direction: "receiving".to_string(),
-                        device_name: view.device_name.clone(),
-                        file_name: info.name.clone(),
-                        file_index: index,
-                        file_count: view.files.len(),
-                        transferred_bytes: received_total,
-                        total_bytes: view.total_bytes,
-                        status: "failed".to_string(),
-                    });
-                    return Err(format!("Alınan dosya tamamlandı ancak hedefe taşınamadı: {error}"));
-                }
-                write_json_line(reader.get_mut(), &FileReceivedMessage {
-                    kind: "file_received", file_index: index, ok: true, message: None
-                }).await?;
-                let received = ReceivedFile {
-                    name: info.name.clone(),
-                    size: info.size,
-                    path: final_path.to_string_lossy().to_string(),
-                    modified: unix_millis(),
-                };
-                let _ = state.app.emit("file-received", received);
-            }
-            write_json_line(reader.get_mut(), &TransferCompleteMessage { kind: "transfer_complete", ok: true }).await?;
-            if let Some(last_file) = view.files.last() {
-                state.emit_transfer_progress(TransferProgress {
-                    transfer_id: transfer_id.clone(),
-                    direction: "receiving".to_string(),
-                    device_name: view.device_name.clone(),
-                    file_name: last_file.name.clone(),
-                    file_index: view.files.len().saturating_sub(1),
-                    file_count: view.files.len(),
-                    transferred_bytes: view.total_bytes,
-                    total_bytes: view.total_bytes,
-                    status: "completed".to_string(),
-                });
-            }
-            state.transfer_requests.lock().await.remove(&transfer_id);
-            let _ = state.app.emit("transfer-queue-updated", ());
         }
+
+        if file_error.is_none() {
+            if let Err(error) = output.flush().await {
+                file_error = Some(format!("Dosya diske yazılamadı: {error}"));
+            }
+        }
+        drop(output);
+
+        if let Some(error) = file_error {
+            let _ = fs::remove_file(&part_path).await;
+            return Err((error, index, received_total));
+        }
+
+        if let Err(error) = fs::rename(&part_path, &final_path).await {
+            let _ = fs::remove_file(&part_path).await;
+            return Err((
+                format!("Alınan dosya tamamlandı ancak hedefe taşınamadı: {error}"),
+                index,
+                received_total,
+            ));
+        }
+
+        write_json_line(reader.get_mut(), &FileReceivedMessage {
+            kind: "file_received",
+            file_index: index,
+            ok: true,
+            message: None,
+        })
+        .await
+        .map_err(|error| (format!("Dosya kaydedildi ancak göndericiye onay iletilemedi: {error}"), index, received_total))?;
+
+        let received = ReceivedFile {
+            name: info.name.clone(),
+            size: info.size,
+            path: final_path.to_string_lossy().to_string(),
+            modified: unix_millis(),
+        };
+        let _ = state.app.emit("file-received", received);
+    }
+
+    write_json_line(reader.get_mut(), &TransferCompleteMessage {
+        kind: "transfer_complete",
+        ok: true,
+    })
+    .await
+    .map_err(|error| (
+        format!("Aktarım tamamlandı ancak göndericiye onay iletilemedi: {error}"),
+        view.files.len().saturating_sub(1),
+        received_total,
+    ))?;
+
+    if let Some(last_file) = view.files.last() {
+        state.emit_transfer_progress(TransferProgress {
+            transfer_id: transfer_id.to_string(),
+            direction: "receiving".to_string(),
+            device_name: view.device_name.clone(),
+            file_name: last_file.name.clone(),
+            file_index: view.files.len().saturating_sub(1),
+            file_count: view.files.len(),
+            transferred_bytes: view.total_bytes,
+            total_bytes: view.total_bytes,
+            status: "completed".to_string(),
+        });
     }
     Ok(())
 }
