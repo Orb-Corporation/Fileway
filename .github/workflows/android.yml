@@ -41,7 +41,7 @@ jobs:
       - name: Install Rust and Android target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -57,13 +57,13 @@ jobs:
           npx tauri android init --ci
           node scripts/patch-android-manifest.mjs
 
-      - name: Build arm64 debug APK
-        run: npm run tauri android build -- --debug --apk --target aarch64
+      - name: Build debug APKs for all Android ABIs
+        run: npm run tauri android build -- --debug --apk --split-per-abi --target aarch64 --target armv7 --target i686 --target x86_64
 
-      - name: Upload APK
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: fileway-android-arm64-debug
+          name: fileway-android-debug-all-abis
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 7
