@@ -50,13 +50,17 @@ For Android, initialize the Tauri Android project once, apply the manifest permi
 
 The Android initializer patches the generated Gradle project to compile and target API 36 and adds basic network permissions. This is intentional: Android 17 blocks local-network traffic only for apps targeting API 37 or higher; apps targeting API 36 or lower retain implicit access. Fileway must not be raised to target API 37 until its native ACCESS_LOCAL_NETWORK runtime-permission flow is implemented. macOS asks the user to grant local-network access on first use.
 
+## Testing
+
+See [the manual test plan](docs/manual-test-plan.md) for LAN pairing, transfer, interruption, filename, and cross-platform test cases. CI currently checks the frontend and Rust core on Linux, Windows, and macOS, and builds an Android ARM64 debug APK.
+
 ## Network and security notes
 
 - Discovery uses UDP broadcast on port 39147; transfers use TCP on port 39148.
 - Both devices must be on the same reachable LAN. Guest Wi-Fi isolation, VLAN separation, VPNs, or firewall rules can prevent discovery or transfer.
 - Pairing approval and per-transfer approval are separate. A discovered device cannot upload files merely by appearing in the list.
 - **Initial development builds do not encrypt network traffic or pairing tokens.** Use only on a trusted private network and do not transfer sensitive files until authenticated encryption, key management, and a security review are complete.
-- Incoming files are written under the app's private Received data directory. Export-to-folder and Android public-storage handling are still being implemented.
+- Incoming files are written under the app's private Received data directory. Each received file can be exported with the native Save dialog. Android document-provider filenames and export behavior still require physical-device verification.
 
 ## License
 
