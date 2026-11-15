@@ -55,7 +55,7 @@ The Android initializer patches the generated Gradle project to target API 36 an
 - Discovery uses UDP broadcast on port 39147; transfers use TCP on port 39148.
 - Both devices must be on the same reachable LAN. Guest Wi-Fi isolation, VLAN separation, VPNs, or firewall rules can prevent discovery or transfer.
 - Pairing approval and per-transfer approval are separate. A discovered device cannot upload files merely by appearing in the list.
-- **Initial development builds do not yet provide end-to-end encryption.** Use only on a trusted private network and do not transfer sensitive files until authenticated encryption and security review are complete.
+- **Initial development builds do not encrypt network traffic or pairing tokens.** Use only on a trusted private network and do not transfer sensitive files until authenticated encryption, key management, and a security review are complete.
 - Incoming files are written under the app's private Received data directory. Export-to-folder and Android public-storage handling are still being implemented.
 
 ## License
