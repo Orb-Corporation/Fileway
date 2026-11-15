@@ -29,6 +29,7 @@ const MAX_HEADER_BYTES: usize = 256 * 1024;
 const MAX_FILES_PER_TRANSFER: usize = 128;
 const MAX_TRANSFER_BYTES: u64 = 100 * 1024 * 1024 * 1024;
 const IO_CHUNK_BYTES: usize = 1024 * 1024;
+const TRANSFER_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -617,24 +618,53 @@ async fn handle_connection(
             for (index, info) in view.files.iter().enumerate() {
                 let final_path = unique_target(&receive_dir, &info.name);
                 let part_path = receive_dir.join(format!(".fileway-{}-{index}.part", Uuid::new_v4()));
-                let mut output = fs::File::create(&part_path).await.map_err(|error| error.to_string())?;
+                let mut output = fs::File::create(&part_path)
+                    .await
+                    .map_err(|error| format!("Geçici dosya oluşturulamadı: {error}"))?;
                 let mut remaining = info.size;
                 let mut buffer = vec![0u8; IO_CHUNK_BYTES];
+                let mut file_error: Option<String> = None;
+
                 while remaining > 0 {
                     let count = remaining.min(buffer.len() as u64) as usize;
-                    if let Err(error) = reader.read_exact(&mut buffer[..count]).await {
-                        let _ = fs::remove_file(&part_path).await;
-                        return Err(format!("Dosya aktarımı yarıda kesildi: {error}"));
+                    match timeout(
+                        TRANSFER_IDLE_TIMEOUT,
+                        reader.read_exact(&mut buffer[..count]),
+                    ).await {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(error)) => {
+                            file_error = Some(format!("Dosya aktarımı yarıda kesildi: {error}"));
+                            break;
+                        }
+                        Err(_) => {
+                            file_error = Some("Gönderici 90 saniyedir veri göndermiyor; aktarım durduruldu.".to_string());
+                            break;
+                        }
                     }
+
                     if let Err(error) = output.write_all(&buffer[..count]).await {
-                        let _ = fs::remove_file(&part_path).await;
-                        return Err(format!("Dosya diske yazılamadı: {error}"));
+                        file_error = Some(format!("Dosya diske yazılamadı: {error}"));
+                        break;
                     }
                     remaining -= count as u64;
                 }
-                output.flush().await.map_err(|error| error.to_string())?;
+
+                if file_error.is_none() {
+                    if let Err(error) = output.flush().await {
+                        file_error = Some(format!("Dosya diske yazılamadı: {error}"));
+                    }
+                }
                 drop(output);
-                fs::rename(&part_path, &final_path).await.map_err(|error| error.to_string())?;
+
+                if let Some(error) = file_error {
+                    let _ = fs::remove_file(&part_path).await;
+                    return Err(error);
+                }
+
+                if let Err(error) = fs::rename(&part_path, &final_path).await {
+                    let _ = fs::remove_file(&part_path).await;
+                    return Err(format!("Alınan dosya tamamlandı ancak hedefe taşınamadı: {error}"));
+                }
                 write_json_line(reader.get_mut(), &FileReceivedMessage {
                     kind: "file_received", file_index: index, ok: true, message: None
                 }).await?;
