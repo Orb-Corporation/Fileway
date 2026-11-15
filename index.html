@@ -4,61 +4,43 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10141c" />
-    <meta name="description" content="Fileway — aynı ağdaki cihazlar arasında doğrudan dosya aktarımı." />
+    <meta name="description" content="Fileway — direct file transfer between devices on the same local network." />
     <title>Fileway</title>
   </head>
   <body>
     <div id="app">
       <header class="topbar">
-        <a class="brand" href="#" aria-label="Fileway ana ekran"><span class="brand-mark">F</span><span>fileway</span></a>
-        <div class="network-status"><span class="pulse"></span><span id="network-label">Ağ hazırlanıyor</span></div>
+        <a class="brand" href="#" aria-label="Fileway" data-i18n-aria="home"><span class="brand-mark">F</span><span>fileway</span></a>
+        <div class="topbar-tools">
+          <div class="network-status"><span class="pulse"></span><span id="network-label" data-i18n="networkPreparing">Ağ hazırlanıyor</span></div>
+          <label class="language-control"><span data-i18n="language">Dil</span><select id="language-select" aria-label="Language">
+            <option value="tr">Türkçe</option><option value="en">English</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="es">Español</option>
+          </select></label>
+          <button id="check-updates" class="button button-quiet" data-i18n="checkUpdates">Güncellemeleri denetle</button>
+        </div>
       </header>
       <main>
         <section class="hero">
           <div>
             <p class="eyebrow">LOCAL · DIRECT · NO CLOUD RELAY</p>
-            <h1>Dosyaların için<br /><span>kısa bir yol.</span></h1>
-            <p class="hero-copy">Aynı ağdaki cihazları bul. Eşleş. Dosyaları doğrudan gönder.</p>
+            <h1><span class="hero-title-muted" data-i18n="hero1">Dosyaların için</span><br /><span class="hero-title-accent" data-i18n="hero2">kısa bir yol.</span></h1>
+            <p class="hero-copy" data-i18n="heroCopy">Aynı ağdaki cihazları bul. Eşleş. Dosyaları doğrudan gönder.</p>
           </div>
-          <div class="hero-device" aria-hidden="true">
-            <div class="device device-back"><span>▧</span></div><div class="transfer-line"></div>
-            <div class="device device-front"><span>▤</span></div><div class="transfer-dot"></div>
-          </div>
+          <div class="hero-device" aria-hidden="true"><div class="device device-back"><span>▧</span></div><div class="transfer-line"></div><div class="device device-front"><span>▤</span></div><div class="transfer-dot"></div></div>
         </section>
         <section class="identity-card">
           <div class="identity-icon">⌘</div>
-          <div class="identity-copy"><span class="muted-label">BU CİHAZ</span><strong id="device-name">Fileway</strong><span id="device-id" class="device-id">Kimlik yükleniyor…</span></div>
-          <button id="scan-button" class="button button-quiet">Ağı tara <span aria-hidden="true">↻</span></button>
+          <div class="identity-copy"><span class="muted-label" data-i18n="deviceLabel">BU CİHAZ</span><strong id="device-name">Fileway</strong><span id="device-id" class="device-id" data-i18n="deviceLoading">Kimlik yükleniyor…</span></div>
+          <button id="scan-button" class="button button-quiet"><span data-i18n="scan">Ağı tara</span> <span aria-hidden="true">↻</span></button>
         </section>
-        <div class="security-note" role="note">
-          <span class="security-icon">!</span>
-          <span><strong>Geliştirme sürümü:</strong> Ağ trafiği ve eşleşme anahtarları henüz şifrelenmiyor. Yalnızca güvendiğin yerel ağlarda dene; hassas dosya gönderme.</span>
-        </div>
-        <section class="workspace">
-          <div class="section-heading"><div><p class="eyebrow">NEARBY DEVICES</p><h2>Yakındaki cihazlar</h2></div><span id="device-count" class="count">0 cihaz</span></div>
-          <div id="device-list" class="device-list"><div class="empty-state"><span class="empty-icon">⌁</span><strong>Cihazlar aranıyor</strong><p>Fileway açık olan diğer cihazlar burada görünecek.</p></div></div>
-        </section>
-        <section class="workspace">
-          <div class="section-heading"><div><p class="eyebrow">PAIRING</p><h2>Eşleşme istekleri</h2></div><span id="pair-count" class="count">0 bekliyor</span></div>
-          <div id="pair-list" class="request-list"><p class="empty-inline">Bekleyen eşleşme isteği yok.</p></div>
-        </section>
-        <section class="workspace">
-          <div class="section-heading"><div><p class="eyebrow">INCOMING TRANSFERS</p><h2>Gelen dosyalar</h2></div><span id="transfer-count" class="count">0 bekliyor</span></div>
-          <div id="transfer-list" class="request-list"><p class="empty-inline">Bekleyen dosya aktarımı yok.</p></div>
-        </section>
-        <section class="workspace">
-          <div class="section-heading"><div><p class="eyebrow">TRANSFER STATUS</p><h2>Aktarımlar</h2></div></div>
-          <div id="active-transfers-list" class="active-transfers-list"><p class="empty-inline">Aktif aktarım yok.</p></div>
-        </section>
-        <section class="workspace paired-section">
-          <div class="section-heading"><div><p class="eyebrow">TRUSTED DEVICES</p><h2>Eşleşmiş cihazlar</h2></div><span id="paired-count" class="count">0 cihaz</span></div>
-          <div id="paired-list" class="paired-list"><p class="empty-inline">Henüz eşleşmiş cihaz yok.</p></div>
-        </section>
-        <section class="workspace">
-          <div class="section-heading"><div><p class="eyebrow">RECEIVED</p><h2>Alınan dosyalar</h2></div><button id="refresh-received" class="text-button">Yenile</button></div>
-          <div id="received-list" class="received-list"><p class="empty-inline">Henüz dosya alınmadı.</p></div>
-        </section>
-        <footer><span>Fileway <span class="footer-version">0.1.0 · DEVELOPMENT BUILD</span></span><span>Dosyaların cihazından çıkarken internet gerekmez.</span></footer>
+        <div class="security-note" role="note"><span class="security-icon">!</span><span><strong data-i18n="securityTitle">Geliştirme sürümü:</strong> <span data-i18n="securityBody">Ağ trafiği henüz şifrelenmiyor. Yalnızca güvendiğin yerel ağlarda dene.</span></span></div>
+        <section class="workspace"><div class="section-heading"><div><p class="eyebrow" data-i18n="nearbyEyebrow">YAKINDAKİ CİHAZLAR</p><h2 data-i18n="nearbyTitle">Yakındaki cihazlar</h2></div><span id="device-count" class="count">0 cihaz</span></div><div id="device-list" class="device-list"><div class="empty-state"><span class="empty-icon">⌁</span><strong data-i18n="noDevices">Henüz cihaz bulunamadı</strong><p data-i18n="noDevicesHint">Diğer cihazlarda Fileway'in açık olduğundan emin ol.</p></div></div></section>
+        <section class="workspace"><div class="section-heading"><div><p class="eyebrow" data-i18n="pairingEyebrow">EŞLEŞTİRME</p><h2 data-i18n="pairingTitle">Eşleşme istekleri</h2></div><span id="pair-count" class="count">0 bekliyor</span></div><div id="pair-list" class="request-list"><p class="empty-inline" data-i18n="noPairRequests">Bekleyen eşleşme isteği yok.</p></div></section>
+        <section class="workspace"><div class="section-heading"><div><p class="eyebrow" data-i18n="incomingEyebrow">GELEN AKTARIMLAR</p><h2 data-i18n="incomingTitle">Gelen dosyalar</h2></div><span id="transfer-count" class="count">0 bekliyor</span></div><div id="transfer-list" class="request-list"><p class="empty-inline" data-i18n="noTransfers">Bekleyen dosya aktarımı yok.</p></div></section>
+        <section class="workspace"><div class="section-heading"><div><p class="eyebrow" data-i18n="statusEyebrow">AKTARIM DURUMU</p><h2 data-i18n="statusTitle">Aktarımlar</h2></div></div><div id="active-transfers-list" class="active-transfers-list"><p class="empty-inline" data-i18n="noActiveTransfers">Aktif aktarım yok.</p></div></section>
+        <section class="workspace paired-section"><div class="section-heading"><div><p class="eyebrow" data-i18n="pairedEyebrow">GÜVENİLEN CİHAZLAR</p><h2 data-i18n="pairedTitle">Eşleşmiş cihazlar</h2></div><span id="paired-count" class="count">0 cihaz</span></div><div id="paired-list" class="paired-list"><p class="empty-inline" data-i18n="noPaired">Henüz eşleşmiş cihaz yok.</p></div></section>
+        <section class="workspace"><div class="section-heading"><div><p class="eyebrow" data-i18n="receivedEyebrow">ALINANLAR</p><h2 data-i18n="receivedTitle">Alınan dosyalar</h2></div><button id="refresh-received" class="text-button" data-i18n="refresh">Yenile</button></div><div id="received-list" class="received-list"><p class="empty-inline" data-i18n="noReceived">Henüz dosya alınmadı.</p></div></section>
+        <footer><span>Fileway <span class="footer-version">0.1.0 · DEVELOPMENT BUILD</span></span><span data-i18n="footer">Dosyaların cihazından çıkarken internet gerekmez.</span></footer>
       </main>
       <div id="toast-region" class="toast-region" aria-live="polite"></div>
     </div>
