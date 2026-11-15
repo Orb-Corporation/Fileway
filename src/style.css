@@ -3,3 +3,11 @@
 .active-transfers-list{display:grid;gap:9px}.active-transfer-card{padding:14px 15px;border:1px solid #344252;background:#151e29;border-radius:11px}.active-transfer-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.transfer-state{font-size:10px;font-weight:700;color:var(--accent);white-space:nowrap}.progress-track{height:7px;margin:12px 0 8px;border-radius:20px;background:#293442;overflow:hidden}.progress-fill{height:100%;border-radius:20px;background:var(--accent);transition:width .18s ease}.progress-meta{display:flex;justify-content:space-between;gap:12px;color:#8290a1;font-size:10px}.progress-meta span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.progress-completed{border-color:#405c35}.progress-completed .transfer-state{color:#a9f06b}.progress-completed .progress-fill{background:#a9f06b}.progress-failed{border-color:#76444a}.progress-failed .transfer-state{color:#ff9b9b}.progress-failed .progress-fill{background:#d96e76}@media(max-width:560px){.active-transfer-heading{align-items:flex-start}.progress-meta{font-size:9px}}
 
 .security-note{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:11px 13px;border:1px solid #57482e;background:#211d17;border-radius:9px;color:#c6b58f;font-size:11px;line-height:1.55}.security-note strong{color:#efcf91}.security-icon{display:grid;place-items:center;flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#4a3b21;color:#f0cb83;font-size:12px;font-weight:900}
+
+.topbar{height:auto;min-height:76px;gap:14px;padding-top:12px;padding-bottom:12px}
+.topbar-tools{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.language-control{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}
+.language-control select{min-height:34px;max-width:112px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:#eef2f8;font:inherit}
+.hero h1 .hero-title-muted{color:#eef2f8}.hero h1 .hero-title-accent{color:var(--accent)}
+#check-updates[hidden]{display:none}
+@media(max-width:620px){.topbar{align-items:flex-start;flex-direction:column}.topbar-tools{width:100%;justify-content:space-between}.hero-device{display:none}.hero{min-height:0;padding:45px 0 32px}}
