@@ -20,7 +20,11 @@
         "resizable": true
       }
     ],
-    "security": { "capabilities": ["default"] }
+    "security": {
+      "capabilities": [
+        "default"
+      ]
+    }
   },
   "bundle": {
     "active": true,
@@ -28,6 +32,11 @@
     "category": "Utility",
     "shortDescription": "Direct local-network file transfer",
     "longDescription": "Discover nearby devices, pair with approval, and transfer files directly over a local network.",
-    "macOS": { "minimumSystemVersion": "10.15" }
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }

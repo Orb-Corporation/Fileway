@@ -869,8 +869,12 @@ async fn finish_transfer(state: State<'_, Arc<AppState>>, transfer_id: String) -
 }
 
 #[tauri::command]
-async fn cancel_transfer(state: State<'_, Arc<AppState>>, transfer_id: String) {
+async fn cancel_transfer(
+    state: State<'_, Arc<AppState>>,
+    transfer_id: String,
+) -> Result<(), String> {
     state.outbound_streams.lock().await.remove(&transfer_id);
+    Ok(())
 }
 
 #[tauri::command]
