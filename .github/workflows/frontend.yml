@@ -1,4 +1,4 @@
-name: Frontend checks
+name: Fileway checks
 
 on:
   push:
@@ -16,3 +16,15 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential             curl             wget             file             libxdo-dev             libssl-dev             librsvg2-dev             libayatana-appindicator3-dev             patchelf             libwebkit2gtk-4.1-dev
+      - name: Check Rust application
+        run: cargo check --manifest-path src-tauri/Cargo.toml

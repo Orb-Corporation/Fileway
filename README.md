@@ -43,12 +43,12 @@ Build a desktop package:
 
     npm run tauri build
 
-For Android, initialize the Tauri Android project once and use the Android toolchain:
+For Android, initialize the Tauri Android project once, apply the manifest permissions, then use the Android toolchain:
 
-    npm run tauri android init
+    npm run tauri:android:init
     npm run tauri android dev
 
-The generated Android manifest must declare the permissions required by the target Android SDK. Android 17 (API 37) and later require local-network access permission at runtime for apps targeting API 37 or higher. macOS asks the user to grant local-network access on first use.
+The Android initializer adds the network permissions to the generated manifest. Android 17 (API 37) requires apps targeting API 37 or higher to request local-network access at runtime; the native runtime permission prompt is not implemented yet, so Android 17+ targeting/API policy compatibility remains a release blocker. macOS asks the user to grant local-network access on first use.
 
 ## Network and security notes
 

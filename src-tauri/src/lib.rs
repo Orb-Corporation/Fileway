@@ -1,3 +1,6 @@
+#[cfg(target_os = "ios")]
+compile_error!("Fileway intentionally does not support iOS.");
+
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
