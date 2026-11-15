@@ -87,6 +87,20 @@ struct TransferRequestView {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct TransferProgress {
+    transfer_id: String,
+    direction: String,
+    device_name: String,
+    file_name: String,
+    file_index: usize,
+    file_count: usize,
+    transferred_bytes: u64,
+    total_bytes: u64,
+    status: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PairedDeviceView {
     id: String,
     name: String,
@@ -186,6 +200,10 @@ impl AppState {
             transfer_waiters: Mutex::new(HashMap::new()),
             outbound_streams: Mutex::new(HashMap::new()),
         })
+    }
+
+    fn emit_transfer_progress(&self, progress: TransferProgress) {
+        let _ = self.app.emit("transfer-progress", progress);
     }
 
     async fn save_paired(&self) -> Result<(), String> {
@@ -614,6 +632,21 @@ async fn handle_connection(
             if !decision.accepted { return Ok(()); }
 
             let receive_dir = state.data_dir.join("Received");
+            let mut received_total = 0u64;
+            let mut last_progress_at = std::time::Instant::now();
+            if let Some(first_file) = view.files.first() {
+                state.emit_transfer_progress(TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    direction: "receiving".to_string(),
+                    device_name: view.device_name.clone(),
+                    file_name: first_file.name.clone(),
+                    file_index: 0,
+                    file_count: view.files.len(),
+                    transferred_bytes: 0,
+                    total_bytes: view.total_bytes,
+                    status: "active".to_string(),
+                });
+            }
             fs::create_dir_all(&receive_dir).await.map_err(|error| error.to_string())?;
             for (index, info) in view.files.iter().enumerate() {
                 let final_path = unique_target(&receive_dir, &info.name);
@@ -647,6 +680,23 @@ async fn handle_connection(
                         break;
                     }
                     remaining -= count as u64;
+                    received_total += count as u64;
+                    if last_progress_at.elapsed() >= Duration::from_millis(250)
+                        || received_total == view.total_bytes
+                    {
+                        state.emit_transfer_progress(TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            direction: "receiving".to_string(),
+                            device_name: view.device_name.clone(),
+                            file_name: info.name.clone(),
+                            file_index: index,
+                            file_count: view.files.len(),
+                            transferred_bytes: received_total,
+                            total_bytes: view.total_bytes,
+                            status: "active".to_string(),
+                        });
+                        last_progress_at = std::time::Instant::now();
+                    }
                 }
 
                 if file_error.is_none() {
@@ -658,11 +708,33 @@ async fn handle_connection(
 
                 if let Some(error) = file_error {
                     let _ = fs::remove_file(&part_path).await;
+                    state.emit_transfer_progress(TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        direction: "receiving".to_string(),
+                        device_name: view.device_name.clone(),
+                        file_name: info.name.clone(),
+                        file_index: index,
+                        file_count: view.files.len(),
+                        transferred_bytes: received_total,
+                        total_bytes: view.total_bytes,
+                        status: "failed".to_string(),
+                    });
                     return Err(error);
                 }
 
                 if let Err(error) = fs::rename(&part_path, &final_path).await {
                     let _ = fs::remove_file(&part_path).await;
+                    state.emit_transfer_progress(TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        direction: "receiving".to_string(),
+                        device_name: view.device_name.clone(),
+                        file_name: info.name.clone(),
+                        file_index: index,
+                        file_count: view.files.len(),
+                        transferred_bytes: received_total,
+                        total_bytes: view.total_bytes,
+                        status: "failed".to_string(),
+                    });
                     return Err(format!("Alınan dosya tamamlandı ancak hedefe taşınamadı: {error}"));
                 }
                 write_json_line(reader.get_mut(), &FileReceivedMessage {
@@ -677,6 +749,19 @@ async fn handle_connection(
                 let _ = state.app.emit("file-received", received);
             }
             write_json_line(reader.get_mut(), &TransferCompleteMessage { kind: "transfer_complete", ok: true }).await?;
+            if let Some(last_file) = view.files.last() {
+                state.emit_transfer_progress(TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    direction: "receiving".to_string(),
+                    device_name: view.device_name.clone(),
+                    file_name: last_file.name.clone(),
+                    file_index: view.files.len().saturating_sub(1),
+                    file_count: view.files.len(),
+                    transferred_bytes: view.total_bytes,
+                    total_bytes: view.total_bytes,
+                    status: "completed".to_string(),
+                });
+            }
             state.transfer_requests.lock().await.remove(&transfer_id);
             let _ = state.app.emit("transfer-queue-updated", ());
         }
