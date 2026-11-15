@@ -234,6 +234,19 @@ impl AppState {
         values.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         let _ = self.app.emit("devices-updated", values);
     }
+
+    async fn prune_expired_devices(&self) {
+        let now = unix_seconds();
+        let removed = {
+            let mut devices = self.devices.lock().await;
+            let before = devices.len();
+            devices.retain(|_, item| now.saturating_sub(item.last_seen) <= DEVICE_TTL);
+            devices.len() != before
+        };
+        if removed {
+            self.emit_devices().await;
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -455,7 +468,10 @@ fn start_discovery(state: Arc<AppState>) {
         let mut buffer = vec![0u8; 2048];
         loop {
             tokio::select! {
-                _ = ticker.tick() => broadcast_beacon(&socket, &state).await,
+                _ = ticker.tick() => {
+                    broadcast_beacon(&socket, &state).await;
+                    state.prune_expired_devices().await;
+                },
                 received = socket.recv_from(&mut buffer) => {
                     let Ok((length, source)) = received else { continue; };
                     let Ok(beacon) = serde_json::from_slice::<Beacon>(&buffer[..length]) else { continue; };
