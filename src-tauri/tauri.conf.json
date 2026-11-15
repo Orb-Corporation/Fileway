@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Fileway",
+  "version": "0.1.0",
+  "identifier": "tech.orb.fileway",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Fileway",
+        "width": 1040,
+        "height": 850,
+        "minWidth": 360,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": { "capabilities": ["default"] }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "shortDescription": "Direct local-network file transfer",
+    "longDescription": "Discover nearby devices, pair with approval, and transfer files directly over a local network.",
+    "macOS": { "minimumSystemVersion": "10.15" }
+  }
+}
