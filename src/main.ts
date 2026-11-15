@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { open as openFile, stat } from "@tauri-apps/plugin-fs";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { copyFile, open as openFile, stat } from "@tauri-apps/plugin-fs";
 import "./style.css";
 
 type Device = { id: string; name: string; ip: string; port: number; lastSeen: number; paired: boolean };
@@ -22,6 +22,7 @@ let devices: Device[] = [];
 let paired: PairedDevice[] = [];
 let pairRequests: PairRequest[] = [];
 let transferRequests: TransferRequest[] = [];
+let receivedFiles: ReceivedFile[] = [];
 let busy = false;
 
 const htmlEntities: Record<string, string> = {
@@ -119,13 +120,31 @@ function renderPaired(): void {
 
 async function renderReceived(): Promise<void> {
   try {
-    const files = await invoke<ReceivedFile[]>("list_received_files");
-    receivedList.innerHTML = files.length ? files.map((file) => `
-      <article class="received-row"><div class="file-icon">↧</div><div class="device-details"><strong>${escapeHtml(file.name)}</strong><span>${formatBytes(file.size)} · ${new Date(Number(file.modified)).toLocaleString()}</span></div></article>`
+    receivedFiles = await invoke<ReceivedFile[]>("list_received_files");
+    receivedList.innerHTML = receivedFiles.length ? receivedFiles.map((file) => `
+      <article class="received-row">
+        <div class="file-icon">↧</div>
+        <div class="device-details"><strong>${escapeHtml(file.name)}</strong><span>${formatBytes(file.size)} · ${new Date(Number(file.modified)).toLocaleString()}</span></div>
+        <button class="button button-secondary" data-action="export" data-id="${escapeHtml(file.name)}">Dışa aktar</button>
+      </article>`
     ).join("") : '<p class="empty-inline">Henüz dosya alınmadı.</p>';
   } catch (error) {
     receivedList.innerHTML = `<p class="empty-inline">Dosyalar okunamadı: ${escapeHtml(String(error))}</p>`;
   }
+}
+
+async function exportReceivedFile(name: string): Promise<void> {
+  const file = receivedFiles.find((item) => item.name === name);
+  if (!file) throw new Error("Dışa aktarılacak dosya artık mevcut değil.");
+
+  const destination = await saveDialog({
+    defaultPath: file.name,
+    title: "Dosyayı dışa aktar",
+  });
+  if (!destination) return;
+
+  await copyFile(file.path, destination);
+  toast(`${file.name} dışa aktarıldı.`);
 }
 
 function render(): void {
@@ -243,6 +262,9 @@ async function handleAction(action: string, id: string): Promise<void> {
       case "unpair":
         await invoke("remove_paired_device", { deviceId: id });
         await refresh();
+        break;
+      case "export":
+        await exportReceivedFile(id);
         break;
     }
   } catch (error) {
