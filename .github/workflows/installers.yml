@@ -55,6 +55,9 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install universal macOS Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
@@ -64,13 +67,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
-      - name: Build macOS disk image
-        run: npm run tauri build -- --bundles dmg
+      - name: Build universal macOS disk image
+        run: npm run tauri build -- --target universal-apple-darwin --bundles dmg
 
       - name: Upload macOS installer
         uses: actions/upload-artifact@v4
         with:
-          name: Fileway-macOS-DMG
+          name: Fileway-macOS-Universal-DMG
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 14
