@@ -18,19 +18,25 @@ try {
   process.exit(1);
 }
 
-// Tauri 2.12 currently generates targetSdk 37. Fileway deliberately stays at
-// API 36 until its Android 17 ACCESS_LOCAL_NETWORK runtime permission bridge
-// is implemented. Android 17 preserves implicit LAN access for targetSdk <= 36.
-const targetSdkPattern = /(targetSdk(?:Version)?\s*(?:=\s*|\s+)?)\d+/g;
-let targetSdkMatches = 0;
-gradle = gradle.replace(targetSdkPattern, (match, prefix) => {
-  targetSdkMatches += 1;
-  return `${prefix}36`;
-});
-if (targetSdkMatches === 0) {
-  throw new Error(
-    "Could not identify targetSdk in app/build.gradle.kts. Review the generated Gradle file before building.",
-  );
+// Tauri 2.12 templates currently use API 37. Fileway stays on API 36 until
+// the native Android 17 ACCESS_LOCAL_NETWORK runtime-permission flow exists.
+// Android 17 preserves implicit local-network access for targetSdk <= 36.
+const sdkFields = [
+  { name: "compileSdk", pattern: /(compileSdk(?:Version)?\s*(?:=\s*|\s+)?)\d+/g },
+  { name: "targetSdk", pattern: /(targetSdk(?:Version)?\s*(?:=\s*|\s+)?)\d+/g },
+];
+
+for (const field of sdkFields) {
+  let matches = 0;
+  gradle = gradle.replace(field.pattern, (_match, prefix) => {
+    matches += 1;
+    return `${prefix}36`;
+  });
+  if (matches === 0) {
+    throw new Error(
+      `Could not identify ${field.name} in app/build.gradle.kts. Review the generated Gradle file before building.`,
+    );
+  }
 }
 
 const permissions = [
@@ -51,8 +57,7 @@ for (const permission of permissions) {
     manifest.slice(applicationTag);
 }
 
-// Do not declare ACCESS_LOCAL_NETWORK while targeting API 36. Android 17
-// only requires and enforces that permission for apps targeting API 37+.
+// ACCESS_LOCAL_NETWORK is only required when targeting API 37 or later.
 manifest = manifest.replace(
   /\s*<uses-permission\s+android:name="android\.permission\.ACCESS_LOCAL_NETWORK"\s*\/>\s*/g,
   "\n",
@@ -60,4 +65,4 @@ manifest = manifest.replace(
 
 writeFileSync(manifestPath, manifest, "utf8");
 writeFileSync(gradlePath, gradle, "utf8");
-console.log("Fileway Android setup complete (targetSdk 36, LAN permissions configured).");
+console.log("Fileway Android setup complete (compileSdk 36, targetSdk 36).");

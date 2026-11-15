@@ -48,7 +48,7 @@ For Android, initialize the Tauri Android project once, apply the manifest permi
     npm run tauri:android:init
     npm run tauri android dev
 
-The Android initializer patches the generated Gradle project to target API 36 and adds basic network permissions. This is intentional: Android 17 blocks local-network traffic only for apps targeting API 37 or higher; apps targeting API 36 or lower retain implicit access. Fileway must not be raised to target API 37 until its native ACCESS_LOCAL_NETWORK runtime-permission flow is implemented. macOS asks the user to grant local-network access on first use.
+The Android initializer patches the generated Gradle project to compile and target API 36 and adds basic network permissions. This is intentional: Android 17 blocks local-network traffic only for apps targeting API 37 or higher; apps targeting API 36 or lower retain implicit access. Fileway must not be raised to target API 37 until its native ACCESS_LOCAL_NETWORK runtime-permission flow is implemented. macOS asks the user to grant local-network access on first use.
 
 ## Network and security notes
 
