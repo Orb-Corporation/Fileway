@@ -186,7 +186,7 @@ async function renderReceived(): Promise<void> {
       <article class="received-row">
         <div class="file-icon">↧</div>
         <div class="device-details"><strong>${escapeHtml(file.name)}</strong><span>${formatBytes(file.size)} · ${new Date(Number(file.modified)).toLocaleString()}</span></div>
-        <button class="button button-secondary" data-action="export" data-id="${escapeHtml(file.name)}">Dışa aktar</button>
+        <button class="button button-secondary" data-action="export" data-id="${escapeHtml(file.name)}">${t("exportDialog")}</button>
       </article>`
     ).join("") : `<p class="empty-inline">${t("noReceived")}</p>`;
   } catch (error) {
@@ -301,7 +301,7 @@ async function sendTo(device: Device): Promise<void> {
       } finally {
         await handle.close();
       }
-      if (sent !== selection.size) throw new Error(`${selection.name} okunurken dosya boyutu değişti.`);
+      if (sent !== selection.size) throw new Error(t("fileChanged", { name: selection.name }));
       await invoke("finish_file", { transferId, fileIndex });
     }
 
