@@ -464,7 +464,7 @@ fn start_discovery(state: Arc<AppState>) {
                         || beacon.device_id == state.identity.id
                         || beacon.device_id.len() > 80
                         || beacon.device_name.trim().is_empty()
-                        || beacon.transfer_port == 0
+                        || beacon.transfer_port != TRANSFER_PORT
                     { continue; }
 
                     let record = DiscoveredDevice {
@@ -1129,5 +1129,75 @@ mod tests {
     fn local_subnet_check_allows_loopback_only_for_local_testing() {
         assert!(is_same_local_subnet(IpAddr::V4(Ipv4Addr::LOCALHOST)));
         assert!(is_same_local_subnet(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)));
+    }
+
+    #[test]
+    fn pairing_wire_message_uses_the_frontend_field_names() {
+        let message = serde_json::json!({
+            "kind": "pair_request",
+            "requestId": "request-1",
+            "deviceId": "device-1",
+            "deviceName": "Laptop"
+        });
+        let parsed: IncomingMessage = serde_json::from_value(message).unwrap();
+
+        match parsed {
+            IncomingMessage::PairRequest {
+                request_id,
+                device_id,
+                device_name,
+            } => {
+                assert_eq!(request_id, "request-1");
+                assert_eq!(device_id, "device-1");
+                assert_eq!(device_name, "Laptop");
+            }
+            _ => panic!("Expected pair_request message"),
+        }
+    }
+
+    #[test]
+    fn transfer_wire_message_preserves_file_metadata() {
+        let message = serde_json::json!({
+            "kind": "transfer_request",
+            "transferId": "transfer-1",
+            "deviceId": "device-1",
+            "deviceName": "Laptop",
+            "token": "pair-token",
+            "files": [{ "name": "report.pdf", "size": 42 }]
+        });
+        let parsed: IncomingMessage = serde_json::from_value(message).unwrap();
+
+        match parsed {
+            IncomingMessage::TransferRequest {
+                transfer_id,
+                device_id,
+                token,
+                files,
+                ..
+            } => {
+                assert_eq!(transfer_id, "transfer-1");
+                assert_eq!(device_id, "device-1");
+                assert_eq!(token, "pair-token");
+                assert_eq!(files.len(), 1);
+                assert_eq!(files[0].name, "report.pdf");
+                assert_eq!(files[0].size, 42);
+            }
+            _ => panic!("Expected transfer_request message"),
+        }
+    }
+
+    #[test]
+    fn beacons_advertise_only_the_fileway_transfer_port() {
+        let beacon = Beacon {
+            kind: "fileway_beacon".to_string(),
+            version: PROTOCOL_VERSION,
+            device_id: "device-1".to_string(),
+            device_name: "Laptop".to_string(),
+            transfer_port: TRANSFER_PORT,
+        };
+        let value = serde_json::to_value(beacon).unwrap();
+
+        assert_eq!(value["transferPort"], TRANSFER_PORT);
+        assert_eq!(value["version"], PROTOCOL_VERSION);
     }
 }
