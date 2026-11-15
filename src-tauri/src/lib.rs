@@ -819,7 +819,7 @@ fn unix_millis() -> u128 {
 }
 
 #[tauri::command]
-fn updater_supported() -> bool { cfg!(desktop) }
+fn updater_supported() -> bool { cfg!(desktop) && option_env!("FILEWAY_UPDATER_ENABLED").is_some() }
 
 #[tauri::command]
 fn restart_app(app: AppHandle) { app.restart(); }
@@ -1090,7 +1090,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             #[cfg(desktop)]
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            if option_env!("FILEWAY_UPDATER_ENABLED").is_some() {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
             let state = Arc::new(AppState::new(app.handle())?);
             app.manage(state.clone());
             start_transfer_server(state.clone());
