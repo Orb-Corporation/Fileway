@@ -36,7 +36,9 @@
       "minimumSystemVersion": "10.15"
     },
     "icon": [
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
     ]
   }
 }
