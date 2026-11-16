@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const manifestPath = resolve(
@@ -6,6 +6,9 @@ const manifestPath = resolve(
 );
 const gradlePath = resolve(
   "src-tauri/gen/android/app/build.gradle.kts",
+);
+const keystorePropertiesPath = resolve(
+  "src-tauri/gen/android/keystore.properties",
 );
 
 let manifest;
@@ -62,6 +65,67 @@ manifest = manifest.replace(
   /\s*<uses-permission\s+android:name="android\.permission\.ACCESS_LOCAL_NETWORK"\s*\/>\s*/g,
   "\n",
 );
+
+// Configure release signing only in CI jobs where the private keystore has
+// been provisioned. Local debug builds remain usable without signing secrets.
+if (existsSync(keystorePropertiesPath)) {
+  if (!/^import java\.util\.Properties$/m.test(gradle)) {
+    gradle = `import java.util.Properties\n${gradle}`;
+  }
+
+  if (!gradle.includes('create("release")')) {
+    const buildTypesMatch = gradle.match(/^([ \t]*)buildTypes[ \t]*\{/m);
+    if (!buildTypesMatch || buildTypesMatch.index === undefined) {
+      throw new Error(
+        "Could not locate buildTypes in app/build.gradle.kts; refusing to patch signing blindly.",
+      );
+    }
+
+    const indent = buildTypesMatch[1];
+    const signingBlock = [
+      `${indent}signingConfigs {`,
+      `${indent}    create("release") {`,
+      `${indent}        val keystorePropertiesFile = rootProject.file("keystore.properties")`,
+      `${indent}        if (!keystorePropertiesFile.exists()) {`,
+      `${indent}            throw GradleException("Missing Android release keystore.properties")`,
+      `${indent}        }`,
+      `${indent}        val keystoreProperties = Properties()`,
+      `${indent}        keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }`,
+      `${indent}        keyAlias = keystoreProperties["keyAlias"] as String`,
+      `${indent}        keyPassword = keystoreProperties["password"] as String`,
+      `${indent}        storeFile = file(keystoreProperties["storeFile"] as String)`,
+      `${indent}        storePassword = keystoreProperties["password"] as String`,
+      `${indent}    }`,
+      `${indent}}`,
+      "",
+    ].join("\n");
+
+    const insertAt = buildTypesMatch.index;
+    gradle =
+      gradle.slice(0, insertAt) +
+      signingBlock +
+      gradle.slice(insertAt);
+  }
+
+  const releaseBuildTypeMatch = gradle.match(/^([ \t]*)getByName\("release"\)[ \t]*\{/m);
+  if (!releaseBuildTypeMatch || releaseBuildTypeMatch.index === undefined) {
+    throw new Error(
+      "Could not locate the release build type in app/build.gradle.kts; refusing to create an unsigned release APK.",
+    );
+  }
+
+  if (!/signingConfig\s*=\s*signingConfigs\.getByName\("release"\)/.test(gradle)) {
+    const insertAt =
+      releaseBuildTypeMatch.index + releaseBuildTypeMatch[0].length;
+    const statement = `\n${releaseBuildTypeMatch[1]}    signingConfig = signingConfigs.getByName("release")`;
+    gradle =
+      gradle.slice(0, insertAt) +
+      statement +
+      gradle.slice(insertAt);
+  }
+
+  console.log("Android release signing configured from keystore.properties.");
+}
 
 writeFileSync(manifestPath, manifest, "utf8");
 writeFileSync(gradlePath, gradle, "utf8");
