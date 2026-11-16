@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to build and attach installers to"
+        required: true
+        default: "v0.2.0"
 
 permissions:
   contents: write
@@ -21,8 +27,12 @@ jobs:
           - platform: macos-latest
             args: "--target universal-apple-darwin --bundles dmg"
     runs-on: ${{ matrix.platform }}
+    env:
+      FILEWAY_HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -37,15 +47,37 @@ jobs:
           sudo apt-get install -y build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf libwebkit2gtk-4.1-dev
       - name: Install frontend dependencies
         run: npm install
-      - name: Validate updater signing setup
+      - name: Validate updater public key
+        if: env.FILEWAY_HAS_UPDATER_KEY == 'true'
         shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          test -n "$TAURI_SIGNING_PRIVATE_KEY" || (echo "Missing TAURI_SIGNING_PRIVATE_KEY repository secret" && exit 1)
           ! grep -q "REPLACE_WITH_FILEWAY_TAURI_PUBLIC_KEY" src-tauri/tauri.conf.json || (echo "Replace the updater public-key placeholder in tauri.conf.json" && exit 1)
 
-      - name: Build, sign, and publish
+      - name: Build and publish unsigned desktop installers
+        if: env.FILEWAY_HAS_UPDATER_KEY != 'true'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.release_tag || github.ref_name }}
+          releaseName: "Fileway ${{ inputs.release_tag || github.ref_name }}"
+          releaseBody: |
+            Fileway desktop installers.
+
+            Download the installer matching your operating system:
+            - Windows: .exe
+            - Linux: .deb or .AppImage
+            - macOS: universal .dmg (Intel and Apple silicon)
+
+            Automatic in-app updates are not enabled in this build. Installers are currently unsigned and may show an operating-system security warning.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+          projectPath: src-tauri
+          uploadUpdaterJson: false
+
+      - name: Build, sign, and publish desktop installers
+        if: env.FILEWAY_HAS_UPDATER_KEY == 'true'
         uses: tauri-apps/tauri-action@v1
         env:
           FILEWAY_UPDATER_ENABLED: "1"
@@ -53,9 +85,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Fileway ${{ github.ref_name }}"
-          releaseBody: "Download the installer for your platform. Existing desktop installs can update from within Fileway."
+          tagName: ${{ inputs.release_tag || github.ref_name }}
+          releaseName: "Fileway ${{ inputs.release_tag || github.ref_name }}"
+          releaseBody: |
+            Fileway desktop installers.
+
+            Download the installer matching your operating system:
+            - Windows: .exe
+            - Linux: .deb or .AppImage
+            - macOS: universal .dmg (Intel and Apple silicon)
+
+            Desktop update packages are signed and can be installed through Fileway's in-app updater.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }} --config tauri.updater.conf.json
