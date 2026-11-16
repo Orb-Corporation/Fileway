@@ -193,15 +193,16 @@ jobs:
         run: |
           set -euo pipefail
           APK_DIR="src-tauri/gen/android/app/build/outputs/apk"
-          mapfile -d '' APK_FILES < <(find "$APK_DIR" -type f -name '*.apk' -print0 | sort -z)
+          ARM64_APK="$APK_DIR/arm64/release/app-arm64-release.apk"
+          ARMV7_APK="$APK_DIR/arm/release/app-arm-release.apk"
 
-          if [[ "${#APK_FILES[@]}" -ne 2 ]]; then
-            echo "::error::Expected exactly two split APKs (ARM64 and ARMv7), found ${#APK_FILES[@]}."
-            find "$APK_DIR" -type f -maxdepth 5 -print || true
-            exit 1
-          fi
+          for apk in "$ARM64_APK" "$ARMV7_APK"; do
+            if [[ ! -f "$apk" ]]; then
+              echo "::error::Expected APK was not generated: $apk"
+              find "$APK_DIR" -maxdepth 5 -type f -print || true
+              exit 1
+            fi
 
-          for apk in "${APK_FILES[@]}"; do
             echo "Verifying $apk"
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
           done
@@ -210,7 +211,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
-          files: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          files: |
+            src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release.apk
+            src-tauri/gen/android/app/build/outputs/apk/arm/release/app-arm-release.apk
           fail_on_unmatched_files: true
           overwrite_files: true
           token: ${{ secrets.GITHUB_TOKEN }}
