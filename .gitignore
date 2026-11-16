@@ -5,3 +5,8 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# Android and desktop signing material must never enter source control.
+*.jks
+*.keystore
+keystore.properties
