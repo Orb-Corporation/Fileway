@@ -62,14 +62,15 @@ jobs:
           tagName: ${{ inputs.release_tag || github.ref_name }}
           releaseName: "Fileway ${{ inputs.release_tag || github.ref_name }}"
           releaseBody: |
-            Fileway desktop installers.
+            Fileway installers.
 
-            Download the installer matching your operating system:
+            Download the package matching your platform:
             - Windows: .exe
             - Linux: .deb or .AppImage
             - macOS: universal .dmg (Intel and Apple silicon)
+            - Android: ARM64 or ARMv7 APK
 
-            Automatic in-app updates are not enabled in this build. Installers are currently unsigned and may show an operating-system security warning.
+            Desktop installers are currently unsigned. Automatic in-app desktop updates are not enabled in this build.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
@@ -88,12 +89,13 @@ jobs:
           tagName: ${{ inputs.release_tag || github.ref_name }}
           releaseName: "Fileway ${{ inputs.release_tag || github.ref_name }}"
           releaseBody: |
-            Fileway desktop installers.
+            Fileway installers.
 
-            Download the installer matching your operating system:
+            Download the package matching your platform:
             - Windows: .exe
             - Linux: .deb or .AppImage
             - macOS: universal .dmg (Intel and Apple silicon)
+            - Android: ARM64 or ARMv7 APK
 
             Desktop update packages are signed and can be installed through Fileway's in-app updater.
           releaseDraft: false
@@ -102,3 +104,113 @@ jobs:
           projectPath: src-tauri
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
+
+  android:
+    needs: publish
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install Android platform and NDK
+        run: |
+          sdkmanager --install \
+            "platforms;android-36" \
+            "platform-tools" \
+            "build-tools;36.0.0" \
+            "ndk;27.2.12479018"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install Rust and Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android armv7-linux-androideabi
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Initialize Android project
+        run: npx tauri android init --ci
+
+      - name: Configure Android release signing
+        shell: bash
+        env:
+          ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for secret_name in ANDROID_KEY_BASE64 ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!secret_name}" ]]; then
+              echo "::error::Missing GitHub Actions secret: ${secret_name}"
+              exit 1
+            fi
+          done
+
+          KEYSTORE_FILE="$RUNNER_TEMP/fileway-release.jks"
+          printf '%s' "$ANDROID_KEY_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          test -s "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+
+          mkdir -p src-tauri/gen/android
+          {
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'password=%s\n' "$ANDROID_KEY_PASSWORD"
+            printf 'storeFile=%s\n' "$KEYSTORE_FILE"
+          } > src-tauri/gen/android/keystore.properties
+          chmod 600 src-tauri/gen/android/keystore.properties
+
+      - name: Patch Android manifest and release signing
+        run: node scripts/patch-android-manifest.mjs
+
+      - name: Build signed APKs for ARM devices
+        run: npm run tauri android build -- --apk --split-per-abi --target aarch64 --target armv7
+
+      - name: Verify APK signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="src-tauri/gen/android/app/build/outputs/apk"
+          mapfile -d '' APK_FILES < <(find "$APK_DIR" -type f -name '*.apk' -print0 | sort -z)
+
+          if [[ "${#APK_FILES[@]}" -ne 2 ]]; then
+            echo "::error::Expected exactly two split APKs (ARM64 and ARMv7), found ${#APK_FILES[@]}."
+            find "$APK_DIR" -type f -maxdepth 5 -print || true
+            exit 1
+          fi
+
+          for apk in "${APK_FILES[@]}"; do
+            echo "Verifying $apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          done
+
+      - name: Upload Android APKs to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          token: ${{ secrets.GITHUB_TOKEN }}
